@@ -179,7 +179,9 @@ def start_video_processing(app, camera_id, sid):
                         detected_class_name = names[class_id]
                         confidence = float(box.conf[0])
                         
-                        print(f"[DEBUG] 탐지된 객체: {detected_class_name}, confidence: {confidence:.3f}")
+                        # BBox 표시 기준(70% 이상)과 동일한 임계값으로 디버깅 출력
+                        if confidence >= BBOX_DISPLAY_THRESHOLD:
+                            print(f"[DEBUG] 탐지된 객체: {detected_class_name}, confidence: {confidence:.3f}")
                         
                         # Confidence 임계값 체크 및 이벤트 발생 조건 설정
                         should_create_event = False
