@@ -1,0 +1,52 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 탐지 시 테두리 깜빡임 애니메이션 */
+@keyframes blink-warning-bg {
+  0% { 
+    background-color: #dc2626; /* 빨강 */
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+  }
+  25% { 
+    background-color: #f59e0b; /* 주황 */
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  }
+  50% { 
+    background-color: #dc2626; /* 빨강 */
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+  }
+  75% { 
+    background-color: #f59e0b; /* 주황 */
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  }
+  100% { 
+    background-color: #dc2626; /* 빨강 */
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+  }
+}
+
+/* 기존 애니메이션 (하위 호환성) */
+@keyframes blink-warning-bg-old {
+  50% { background-color: #4a2d2d; /* 어두운 빨강 */ }
+}
+
+.bg-blink {
+  background-color: #4a402d; /* 어두운 노랑 */
+  animation: blink-warning-bg-old 1s infinite;
+}
+
+/* 새로운 강화된 경고 애니메이션 */
+.bg-blink-warning {
+  background-color: #dc2626; /* 빨강 */
+  animation: blink-warning-bg 0.8s infinite;
+  transform: scale(1.02);
+}
+
+/* 호버 시 애니메이션 일시정지 */
+.bg-blink-warning:hover {
+  animation-play-state: paused;
+  transform: scale(1.05);
+  transition: transform 0.2s ease-in-out;
+}

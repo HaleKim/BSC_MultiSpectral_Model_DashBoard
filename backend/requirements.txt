@@ -1,0 +1,29 @@
+# /backend/requirements.txt
+
+# 웹 프레임워크 및 WebSocket
+Flask==2.2.2
+Werkzeug==2.2.2
+Flask-SocketIO==5.3.3
+Flask-Cors==3.0.10
+
+# 데이터베이스
+Flask-SQLAlchemy==2.5.1
+SQLAlchemy==1.4.39
+mysql-connector-python==8.0.30
+
+# 인증 (JSON Web Token)
+Flask-JWT-Extended==4.4.4
+
+# AI 및 이미지 처리
+# PyTorch는 CUDA 버전에 따라 설치 방법이 다르므로, 공식 홈페이지를 참고하는 것이 가장 좋습니다.
+# 아래는 CPU 버전 기준입니다.
+torch==2.1.0
+torchvision==0.16.0
+ultralytics
+opencv-python-headless==4.8.0.76
+numpy==1.26.2
+
+# 기타
+python-dotenv==0.21.0 # .env 파일 로드
+PyYAML==6.0 # models.yaml 파싱
+eventlet==0.33.3 # SocketIO를 위한 고성능 서버
