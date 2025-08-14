@@ -98,7 +98,7 @@ const Dashboard = () => {
       
       // 모든 카메라에 대해 스트림 시작 요청
       for (const id of cameraIds) {
-        console.log(`카메라 ${id} 스트림 시작 요청`);
+        console.log(`카메라 ${id + 1} 스트림 시작 요청`);
         sendEvent('start_stream', { camera_id: id });
         setIsStreaming(prev => ({ ...prev, [id]: true }));
       }
@@ -123,7 +123,7 @@ const Dashboard = () => {
     try {
       // 모든 카메라에 대해 스트림 중지 요청
       for (const id of cameraIds) {
-        console.log(`카메라 ${id} 스트림 중지 요청`);
+        console.log(`카메라 ${id + 1} 스트림 중지 요청`);
         sendEvent('stop_stream', { camera_id: id });
       }
       
@@ -206,20 +206,24 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-6">
           {mode === 'live' ? (
             <div className="grid grid-cols-2 gap-4">
-              <VideoStream
-                title="카메라 1 - RGB"
-                frameData={liveFrames[0]?.rgb}
-                isStreaming={isStreaming[0]}
-                onStreamClick={() => openViewer(0, 'rgb', '카메라 1 - RGB')}
-                personDetected={personDetected[0]}
-              />
-              <VideoStream
-                title="카메라 1 - TIR"
-                frameData={liveFrames[0]?.tir}
-                isStreaming={isStreaming[0]}
-                onStreamClick={() => openViewer(0, 'tir', '카메라 1 - TIR')}
-                personDetected={personDetected[0]}
-              />
+              {cameraIds.map(cameraId => (
+                <React.Fragment key={`${cameraId}-rgb`}>
+                  <VideoStream
+                    title={`카메라 ${cameraId + 1} - RGB`}
+                    frameData={liveFrames[cameraId]?.rgb}
+                    isStreaming={isStreaming[cameraId]}
+                    onStreamClick={() => openViewer(cameraId, 'rgb', `카메라 ${cameraId + 1} - RGB`)}
+                    personDetected={personDetected[cameraId]}
+                  />
+                  <VideoStream
+                    title={`카메라 ${cameraId + 1} - TIR`}
+                    frameData={liveFrames[cameraId]?.tir}
+                    isStreaming={isStreaming[cameraId]}
+                    onStreamClick={() => openViewer(cameraId, 'tir', `카메라 ${cameraId + 1} - TIR`)}
+                    personDetected={personDetected[cameraId]}
+                  />
+                </React.Fragment>
+              ))}
             </div>
           ) : (
             <TestModePanel />

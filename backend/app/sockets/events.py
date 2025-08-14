@@ -27,7 +27,7 @@ def handle_disconnect():
     if request.sid in video_tasks:
         for camera_id, task in video_tasks[request.sid].items():
             task.kill()
-            logger.info(f"카메라 {camera_id} 스트리밍 작업 종료: {request.sid}")
+            logger.info(f"카메라 {camera_id + 1} 스트리밍 작업 종료: {request.sid}")
         del video_tasks[request.sid]
 
 @socketio.on('start_stream')
@@ -40,7 +40,7 @@ def handle_start_stream(data):
         
     # 이미 해당 카메라 스트림이 실행 중이면 중복 실행 방지
     if client_sid in video_tasks and camera_id in video_tasks[client_sid]:
-        logger.warning(f"카메라 {camera_id}는 이미 스트리밍 중입니다: {client_sid}")
+        logger.warning(f"카메라 {camera_id + 1}는 이미 스트리밍 중입니다: {client_sid}")
         return
 
     logger.info(f"스트리밍 시작 요청: camera_id={camera_id}, client={client_sid}")
@@ -52,7 +52,7 @@ def handle_start_stream(data):
         client_sid
     )
     video_tasks[client_sid][camera_id] = task
-    emit('response', {'message': f'카메라 {camera_id} 스트리밍을 시작합니다.'})
+    emit('response', {'message': f'카메라 {camera_id + 1} 스트리밍을 시작합니다.'})
 
 @socketio.on('stop_stream')
 def handle_stop_stream(data):
@@ -65,8 +65,8 @@ def handle_stop_stream(data):
     if client_sid in video_tasks and camera_id in video_tasks[client_sid]:
         task = video_tasks[client_sid].pop(camera_id)
         task.kill()
-        logger.info(f"사용자 요청으로 카메라 {camera_id} 스트리밍 중지: {client_sid}")
-        emit('response', {'message': f'카메라 {camera_id} 스트리밍을 중지합니다.'})
+        logger.info(f"사용자 요청으로 카메라 {camera_id + 1} 스트리밍 중지: {client_sid}")
+        emit('response', {'message': f'카메라 {camera_id + 1} 스트리밍을 중지합니다.'})
     else:
         logger.warning(f"중지할 스트리밍 작업이 없습니다: camera_id={camera_id}, client={client_sid}")
 

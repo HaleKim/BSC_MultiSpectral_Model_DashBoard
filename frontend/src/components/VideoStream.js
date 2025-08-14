@@ -3,6 +3,11 @@
 import React from 'react';
 
 const VideoStream = ({ title, frameData, isStreaming, onStreamClick, personDetected = false }) => {
+  // personDetected 값에 따라 부모 div의 배경 클래스를 동적으로 결정
+  const containerClass = personDetected
+    ? 'bg-blink-warning' // 탐지 시: 강화된 깜빡임 애니메이션 배경
+    : 'bg-gray-800'; // 평상시: 일반 배경
+
   const borderColor = personDetected ? 'border-red-500' : 'border-cyan-500';
 
   // 디버깅 정보 (백엔드 호환성을 위해 추가)
@@ -14,7 +19,7 @@ const VideoStream = ({ title, frameData, isStreaming, onStreamClick, personDetec
   };
 
   return (
-    <div className="p-4 bg-gray-800 rounded-lg shadow-lg cursor-pointer" onClick={onStreamClick}>
+    <div className={`p-4 rounded-lg shadow-lg cursor-pointer transition-all duration-300 ${containerClass}`} onClick={onStreamClick}>
       <h2 className="text-xl font-semibold mb-2 text-white">{title}</h2>
 
       {/* 디버깅 정보 표시 (백엔드 호환성을 위해 추가) */}
@@ -25,7 +30,7 @@ const VideoStream = ({ title, frameData, isStreaming, onStreamClick, personDetec
       </div>
 
       <div
-        className={`relative bg-black rounded-md aspect-video flex items-center justify-center border-2 ${borderColor}`}
+        className={`relative bg-black rounded-md aspect-video flex items-center justify-center transition-all duration-300 border-2 ${borderColor} ${personDetected ? 'ring-4 ring-red-500 ring-opacity-50' : ''}`}
       >
         {frameData ? (
           <img

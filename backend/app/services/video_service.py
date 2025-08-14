@@ -32,7 +32,7 @@ FPS = 20
 RECORDINGS_FOLDER = "event_recordings"
 
 # --- Confidence 임계값 설정 ---
-PERSON_CONFIDENCE_THRESHOLD = 0.5  # 사람 탐지 임계값: 50%
+PERSON_CONFIDENCE_THRESHOLD = 0.7  # 사람 탐지 임계값: 70% (BBox 표시 기준과 동일)
 ANIMAL_CONFIDENCE_THRESHOLD = 0.7  # 동물 탐지 임계값: 70%
 BBOX_DISPLAY_THRESHOLD = 0.7       # BBox 표시 임계값: 70%
 
@@ -152,11 +152,27 @@ def start_video_processing(app, camera_id, sid):
 
                 results = model(input_data, verbose=False)
                 
-                # confidence 60% 이상인 탐지 결과만 표시
+                # confidence 70% 이상인 탐지 결과만 표시
                 annotated_frame_rgb = draw_detections_on_frame(frame_rgb, results, BBOX_DISPLAY_THRESHOLD)
                 annotated_frame_tir = draw_detections_on_frame(annotated_frame_tir, results, BBOX_DISPLAY_THRESHOLD)
                 
+                # BBox가 표시되는지 확인 (경고 기준)
+                has_displayed_bbox = False
                 names = results[0].names
+                for r in results:
+                    for box in r.boxes:
+                        confidence = float(box.conf[0])
+                        # BBox 표시 기준과 동일한 임계값으로 경고 판단
+                        if confidence >= BBOX_DISPLAY_THRESHOLD:
+                            has_displayed_bbox = True
+                            break
+                    if has_displayed_bbox:
+                        break
+                
+                # BBox가 표시될 때만 경고 발생
+                is_person_detected = has_displayed_bbox
+                
+                # 이벤트 생성 로직 (기존과 동일)
                 for r in results:
                     for box in r.boxes:
                         class_id = int(box.cls[0])
@@ -170,7 +186,6 @@ def start_video_processing(app, camera_id, sid):
                         
                         if detected_class_name == 'person' and confidence >= PERSON_CONFIDENCE_THRESHOLD:
                             should_create_event = True
-                            is_person_detected = True
                             detected_object_type = 'person'
                             detected_confidence = confidence
                             print(f"[DEBUG] 사람 탐지 - 이벤트 생성 조건 충족")
@@ -247,4 +262,4 @@ def start_video_processing(app, camera_id, sid):
             socketio.sleep(1 / FPS)
 
     cap.release()
-    print(f"카메라 {camera_id} 스트리밍 스레드 종료.")
+    print(f"카메라 {camera_id + 1} 스트리밍 스레드 종료.")
