@@ -53,8 +53,15 @@ const TestModePanel = () => {
                 
                 // 모델 목록 설정
                 setAvailableModels(modelsResponse.data);
-                if (modelsResponse.data.length > 0) {
+                
+                // 테스트 모드 전용 모델 설정 (실시간 감시와 분리)
+                const savedTestModel = localStorage.getItem('selectedTestModel');
+                if (savedTestModel && modelsResponse.data.includes(savedTestModel)) {
+                    setSelectedModel(savedTestModel);
+                    console.log('저장된 테스트 모델 로드:', savedTestModel);
+                } else if (modelsResponse.data.length > 0) {
                     setSelectedModel(modelsResponse.data[0]);
+                    console.log('기본 테스트 모델 설정:', modelsResponse.data[0]);
                 }
                 
                 setError('');
@@ -89,6 +96,8 @@ const TestModePanel = () => {
         };
     }, [isAnalyzing]);
 
+
+
     // 비디오 동기화 함수들
     const syncVideos = (targetTime) => {
         if (rgbVideoRef.current && tirVideoRef.current && !isSeeking.current) {
@@ -102,27 +111,30 @@ const TestModePanel = () => {
     };
 
     const handlePlay = () => {
-        if (rgbVideoRef.current && tirVideoRef.current) {
-            rgbVideoRef.current.play();
-            tirVideoRef.current.play();
-            setIsPlaying(true);
+        if (rgbVideoRef.current && tirVideoRef.current && selectedRgbVideo && selectedTirVideo) {
+            // 비디오 소스가 로드되었는지 확인
+            if (rgbVideoRef.current.readyState >= 3 && tirVideoRef.current.readyState >= 3) {
+                rgbVideoRef.current.play().catch(e => console.warn('RGB 비디오 재생 실패:', e));
+                tirVideoRef.current.play().catch(e => console.warn('TIR 비디오 재생 실패:', e));
+                setIsPlaying(true);
+            } else {
+                console.warn('비디오가 아직 로드되지 않았습니다.');
+            }
+        } else {
+            console.warn('비디오를 먼저 선택해주세요.');
         }
     };
 
     const handlePause = () => {
         if (rgbVideoRef.current && tirVideoRef.current) {
-            rgbVideoRef.current.pause();
-            tirVideoRef.current.pause();
-            setIsPlaying(false);
+            try {
+                rgbVideoRef.current.pause();
+                tirVideoRef.current.pause();
+                setIsPlaying(false);
+            } catch (e) {
+                console.warn('비디오 일시정지 실패:', e);
+            }
         }
-    };
-
-    const handleSeek = (e) => {
-        const rect = e.target.getBoundingClientRect();
-        const percent = (e.clientX - rect.left) / rect.width;
-        const targetTime = percent * duration;
-        syncVideos(targetTime);
-        setCurrentTime(targetTime);
     };
 
     const handlePlaybackRateChange = (rate) => {
@@ -181,7 +193,7 @@ const TestModePanel = () => {
         const seconds = Math.floor(time % 60);
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
-
+    
     return (
         <div className="space-y-6">
             {/* 모델 선택 */}
@@ -189,7 +201,13 @@ const TestModePanel = () => {
                 <h3 className="text-lg font-semibold mb-3 text-white">분석 모델 선택</h3>
                 <select 
                     value={selectedModel} 
-                    onChange={(e) => setSelectedModel(e.target.value)}
+                    onChange={(e) => {
+                        const newModel = e.target.value;
+                        setSelectedModel(newModel);
+                        // 테스트 모드 전용 모델 저장 (실시간 감시와 분리)
+                        localStorage.setItem('selectedTestModel', newModel);
+                        console.log('테스트 모드에서 모델 변경:', newModel);
+                    }}
                     className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     disabled={isAnalyzing || isModelsLoading}
                 >
@@ -220,7 +238,13 @@ const TestModePanel = () => {
                     <h3 className="text-lg font-semibold mb-3 text-white">RGB 영상 선택</h3>
                     <select 
                         value={selectedRgbVideo} 
-                        onChange={(e) => setSelectedRgbVideo(e.target.value)}
+                        onChange={(e) => {
+                            setSelectedRgbVideo(e.target.value);
+                            // 비디오 변경 시 상태 초기화
+                            setIsPlaying(false);
+                            setCurrentTime(0);
+                            setDuration(0);
+                        }}
                         className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-3"
                         disabled={isLoading || isAnalyzing}
                     >
@@ -241,7 +265,13 @@ const TestModePanel = () => {
                     <h3 className="text-lg font-semibold mb-3 text-white">TIR 영상 선택</h3>
                     <select 
                         value={selectedTirVideo} 
-                        onChange={(e) => setSelectedTirVideo(e.target.value)}
+                        onChange={(e) => {
+                            setSelectedTirVideo(e.target.value);
+                            // 비디오 변경 시 상태 초기화
+                            setIsPlaying(false);
+                            setCurrentTime(0);
+                            setDuration(0);
+                        }}
                         className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-3"
                         disabled={isLoading || isAnalyzing}
                     >
@@ -266,24 +296,27 @@ const TestModePanel = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     {/* RGB 비디오 */}
                     <div className="bg-black rounded-md aspect-video relative">
-                        {selectedRgbVideo && !isAnalyzing ? (
-                            <video
-                                ref={rgbVideoRef}
-                                src={`${process.env.REACT_APP_API_URL}/test_videos/${selectedRgbVideo}`}
-                                className="w-full h-full object-contain"
-                                onTimeUpdate={handleRgbTimeUpdate}
-                                onLoadedMetadata={handleRgbLoadedMetadata}
-                                muted
-                            />
-                        ) : isAnalyzing && rgbFrame ? (
-                            <img 
-                                src={`data:image/jpeg;base64,${rgbFrame}`} 
-                                alt="RGB Analysis Result" 
-                                className="w-full h-full object-contain"
-                            />
+                        {selectedRgbVideo ? (
+                            <>
+                                <video
+                                    ref={rgbVideoRef}
+                                    src={`${process.env.REACT_APP_API_URL}/test_videos/${selectedRgbVideo}`}
+                                    className={`w-full h-full object-contain ${isAnalyzing ? 'opacity-50' : ''}`}
+                                    onTimeUpdate={handleRgbTimeUpdate}
+                                    onLoadedMetadata={handleRgbLoadedMetadata}
+                                    muted
+                                />
+                                {isAnalyzing && rgbFrame && (
+                                    <img 
+                                        src={`data:image/jpeg;base64,${rgbFrame}`} 
+                                        alt="RGB Analysis Result" 
+                                        className="absolute top-0 left-0 w-full h-full object-contain"
+                                    />
+                                )}
+                            </>
                         ) : (
                             <div className="flex items-center justify-center h-full text-gray-500">
-                                {isAnalyzing ? "RGB 영상 분석 중..." : "RGB 영상을 선택해주세요"}
+                                RGB 영상을 선택해주세요
                             </div>
                         )}
                         <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
@@ -293,22 +326,25 @@ const TestModePanel = () => {
 
                     {/* TIR 비디오 */}
                     <div className="bg-black rounded-md aspect-video relative">
-                        {selectedTirVideo && !isAnalyzing ? (
-                            <video
-                                ref={tirVideoRef}
-                                src={`${process.env.REACT_APP_API_URL}/test_videos/${selectedTirVideo}`}
-                                className="w-full h-full object-contain"
-                                muted
-                            />
-                        ) : isAnalyzing && tirFrame ? (
-                            <img 
-                                src={`data:image/jpeg;base64,${tirFrame}`} 
-                                alt="TIR Analysis Result" 
-                                className="w-full h-full object-contain"
-                            />
+                        {selectedTirVideo ? (
+                            <>
+                                <video
+                                    ref={tirVideoRef}
+                                    src={`${process.env.REACT_APP_API_URL}/test_videos/${selectedTirVideo}`}
+                                    className={`w-full h-full object-contain ${isAnalyzing ? 'opacity-50' : ''}`}
+                                    muted
+                                />
+                                {isAnalyzing && tirFrame && (
+                                    <img 
+                                        src={`data:image/jpeg;base64,${tirFrame}`} 
+                                        alt="TIR Analysis Result" 
+                                        className="absolute top-0 left-0 w-full h-full object-contain"
+                                    />
+                                )}
+                            </>
                         ) : (
                             <div className="flex items-center justify-center h-full text-gray-500">
-                                {isAnalyzing ? "TIR 영상 분석 중..." : "TIR 영상을 선택해주세요"}
+                                TIR 영상을 선택해주세요
                             </div>
                         )}
                         <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
@@ -322,23 +358,32 @@ const TestModePanel = () => {
                     {/* 진행 바 */}
                     <div className="flex items-center space-x-2">
                         <span className="text-white text-sm">{formatTime(currentTime)}</span>
-                        <div 
-                            className="flex-1 h-2 bg-gray-600 rounded-full cursor-pointer"
-                            onClick={handleSeek}
-                        >
-                            <div 
-                                className="h-full bg-cyan-500 rounded-full"
-                                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-                            />
-                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max={duration || 0}
+                            value={currentTime}
+                            onChange={(e) => {
+                                const time = parseFloat(e.target.value);
+                                syncVideos(time);
+                                setCurrentTime(time);
+                            }}
+                            disabled={!selectedRgbVideo || !selectedTirVideo}
+                            className="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                            style={{
+                                background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${duration > 0 ? (currentTime / duration) * 100 : 0}%, #4b5563 ${duration > 0 ? (currentTime / duration) * 100 : 0}%, #4b5563 100%)`
+                            }}
+                        />
                         <span className="text-white text-sm">{formatTime(duration)}</span>
                     </div>
+                    
+
 
                     {/* 재생 컨트롤 */}
                     <div className="flex items-center justify-center space-x-4">
                         <button
                             onClick={isPlaying ? handlePause : handlePlay}
-                            disabled={!selectedRgbVideo || !selectedTirVideo || isAnalyzing}
+                            disabled={!selectedRgbVideo || !selectedTirVideo}
                             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 text-white rounded-lg"
                         >
                             {isPlaying ? '⏸️ 일시정지' : '▶️ 재생'}
@@ -348,7 +393,7 @@ const TestModePanel = () => {
                         <select
                             value={playbackRate}
                             onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
-                            disabled={isAnalyzing}
+                            disabled={!selectedRgbVideo || !selectedTirVideo}
                             className="px-2 py-1 bg-gray-700 text-white rounded"
                         >
                             <option value={0.5}>0.5x</option>

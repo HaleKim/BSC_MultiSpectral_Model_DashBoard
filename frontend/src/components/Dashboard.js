@@ -6,6 +6,7 @@ import TestModePanel from './TestModePanel';
 import FullscreenViewer from './FullscreenViewer';
 import EventDetailViewer from './EventDetailViewer';
 import { initSocket, disconnectSocket, subscribeToEvent, sendEvent, getSocket } from '../services/socket';
+import { getDefaultModel } from '../services/api';
 import AuthContext from '../context/AuthContext';
 import alertSound from '../assets/alarm.mp3';
 
@@ -36,6 +37,9 @@ const Dashboard = () => {
   // 모드 전환 중 상태 (백엔드 호환성을 위해 추가)
   const [isModeChanging, setIsModeChanging] = useState(false);
 
+  // 실시간 감시용 모델 관리 (간소화)
+  const [selectedLiveModel, setSelectedLiveModel] = useState('yolo11n_early_fusion.pt');
+
   const audioRef = useRef(null);
 
   // 소켓 연결/해제 및 이벤트 수신 전용 useEffect
@@ -60,7 +64,7 @@ const Dashboard = () => {
       
       if (typeof data.camera_id === 'number') {
         console.log(`카메라 ${data.camera_id} 프레임 처리 중...`);
-        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.tir } }));
+        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.rgb } }));
         setPersonDetected(prev => ({ ...prev, [data.camera_id]: data.person_detected }));
         console.log(`카메라 ${data.camera_id} 프레임 처리 완료`);
       } else if (data.camera_id === 'test_video') {
@@ -98,10 +102,13 @@ const Dashboard = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
-      // 모든 카메라에 대해 스트림 시작 요청
+      // 모든 카메라에 대해 스트림 시작 요청 (선택된 모델 포함)
       for (const id of cameraIds) {
-        console.log(`카메라 ${id + 1} 스트림 시작 요청`);
-        sendEvent('start_stream', { camera_id: id });
+        console.log(`카메라 ${id + 1} 스트림 시작 요청 (모델: ${selectedLiveModel})`);
+        sendEvent('start_stream', { 
+          camera_id: id,
+          model: isAdmin ? selectedLiveModel : undefined  // 관리자만 모델 지정
+        });
         setIsStreaming(prev => ({ ...prev, [id]: true }));
       }
       
@@ -176,6 +183,35 @@ const Dashboard = () => {
     }
   }, [user, isAdmin]);
 
+  // settings.json에서 기본 모델 동기화
+  useEffect(() => {
+    const loadDefaultModel = async () => {
+      try {
+        const response = await getDefaultModel();
+        const defaultModel = response.data.default_model;
+        setSelectedLiveModel(defaultModel);
+        localStorage.setItem('selectedLiveModel', defaultModel);
+        console.log('Dashboard: settings.json에서 기본 모델 로드:', defaultModel);
+        
+        // 모델 로드 후 즉시 스트림 재시작 (실시간 모드인 경우)
+        if (mode === 'live' && Object.values(isStreaming).some(streaming => streaming)) {
+          console.log('기본 모델 변경으로 인한 스트림 재시작');
+          stopAllStreams();
+          setTimeout(() => startAllStreams(), 1000);
+        }
+      } catch (error) {
+        // 오류 시 localStorage fallback
+        const savedModel = localStorage.getItem('selectedLiveModel');
+        if (savedModel) {
+          setSelectedLiveModel(savedModel);
+        }
+        console.error('기본 모델 로드 실패:', error);
+      }
+    };
+    
+    loadDefaultModel();
+  }, [mode, isStreaming, startAllStreams, stopAllStreams]);
+
   // 모드 변경 핸들러 (백엔드 호환성을 위해 추가)
   const handleModeChange = (newMode) => {
     if (isModeChanging) return; // 모드 변경 중이면 무시
@@ -225,6 +261,8 @@ const Dashboard = () => {
         )}
       </div>
 
+
+
       {/* 모드 전환 중 표시 (백엔드 호환성을 위해 추가) */}
       {isModeChanging && (
         <div className="text-center mb-4 p-2 bg-blue-900 rounded-lg">
@@ -265,7 +303,10 @@ const Dashboard = () => {
           {serverMessage && (
             <div className="p-4 bg-blue-900 rounded-lg text-center mb-4">{serverMessage}</div>
           )}
-          <EventLog onOpenFull={handleOpenFullEvent} />
+          {/* 실시간 모드에서만 이벤트 로그 표시 */}
+          {mode === 'live' && (
+            <EventLog onOpenFull={handleOpenFullEvent} />
+          )}
         </div>
       </div>
 

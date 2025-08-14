@@ -171,3 +171,52 @@ def get_models():
         print(f"모델 목록을 불러오는 중 오류 발생: {e}")
         # 오류 시 기본 모델 목록 반환
         return jsonify(['yolo11n_early_fusion.pt', 'yolo11n_mid_fusion.pt', 'yolo11n.pt'])
+
+# --- 기본 모델 설정 API ---
+@api_bp.route('/default-model', methods=['GET'])
+@jwt_required()
+def get_default_model():
+    """현재 설정된 기본 모델을 반환합니다."""
+    try:
+        import json
+        settings_path = os.path.join(current_app.root_path, '..', 'settings.json')
+        
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                return jsonify({'default_model': settings.get('default_model', 'yolo11n_early_fusion.pt')}), 200
+        else:
+            return jsonify({'default_model': 'yolo11n_early_fusion.pt'}), 200
+            
+    except Exception as e:
+        print(f"기본 모델 조회 중 오류: {str(e)}")
+        return jsonify({'default_model': 'yolo11n_early_fusion.pt'}), 200
+
+@api_bp.route('/default-model', methods=['POST'])
+@admin_required()
+def set_default_model():
+    """서버의 기본 모델 설정을 업데이트합니다."""
+    try:
+        data = request.get_json()
+        new_model = data.get('model')
+        
+        if not new_model:
+            return jsonify({'error': '모델명이 필요합니다.'}), 400
+        
+        # 설정 파일 업데이트
+        import json
+        settings_path = os.path.join(current_app.root_path, '..', 'settings.json')
+        
+        settings = {
+            'default_model': new_model
+        }
+        
+        with open(settings_path, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+        
+        print(f"기본 모델 설정 업데이트: {new_model}")
+        return jsonify({'message': f'기본 모델이 {new_model}로 설정되었습니다.'}), 200
+        
+    except Exception as e:
+        print(f"기본 모델 설정 중 오류: {str(e)}")
+        return jsonify({'error': '기본 모델 설정에 실패했습니다.'}), 500
