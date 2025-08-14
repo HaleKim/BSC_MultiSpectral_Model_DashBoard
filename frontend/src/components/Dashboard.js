@@ -1,14 +1,16 @@
 // src/components/Dashboard.js
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useContext } from 'react';
 import VideoStream from './VideoStream';
 import EventLog from './EventLog';
 import TestModePanel from './TestModePanel';
 import FullscreenViewer from './FullscreenViewer';
 import EventDetailViewer from './EventDetailViewer';
 import { initSocket, disconnectSocket, subscribeToEvent, sendEvent, getSocket } from '../services/socket';
+import AuthContext from '../context/AuthContext';
 import alertSound from '../assets/alarm.mp3';
 
 const Dashboard = () => {
+  const { user } = useContext(AuthContext);
   const [serverMessage, setServerMessage] = useState('');
   const [mode, setMode] = useState('live');
 
@@ -162,9 +164,27 @@ const Dashboard = () => {
     }
   }, [personDetected]);
 
+  // 관리자 권한 체크 (AdminRoute와 동일한 기준)
+  const isAdmin = user && user.role === 'admin';
+  
+  // 디버깅: 사용자 정보 확인
+  useEffect(() => {
+    console.log('현재 사용자 정보:', user);
+    console.log('관리자 권한:', isAdmin);
+    if (user) {
+      console.log('사용자 역할:', user.role);
+    }
+  }, [user, isAdmin]);
+
   // 모드 변경 핸들러 (백엔드 호환성을 위해 추가)
   const handleModeChange = (newMode) => {
     if (isModeChanging) return; // 모드 변경 중이면 무시
+    
+    // 테스트 모드는 관리자만 접근 가능 (AdminRoute와 동일한 체크)
+    if (newMode === 'test' && (!user || user.role !== 'admin')) {
+      alert('테스트 영상 분석 기능은 관리자만 사용할 수 있습니다.');
+      return;
+    }
     
     console.log(`모드 변경: ${mode} -> ${newMode}`);
     setMode(newMode);
@@ -183,15 +203,26 @@ const Dashboard = () => {
         >
           {isModeChanging && mode === 'live' ? '전환 중...' : '실시간 다중 감시'}
         </button>
-        <button
-          onClick={() => handleModeChange('test')}
-          disabled={isModeChanging}
-          className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
-            mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
-          } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {isModeChanging && mode === 'test' ? '전환 중...' : '시험 영상 분석'}
-        </button>
+        {user && isAdmin && (
+          <button
+            onClick={() => handleModeChange('test')}
+            disabled={isModeChanging}
+            className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
+              mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
+            } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isModeChanging && mode === 'test' ? '전환 중...' : '시험 영상 분석 (관리자)'}
+          </button>
+        )}
+        
+        {/* 임시 디버깅 정보 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-xs text-gray-400 mt-2">
+            <p>사용자: {user ? user.username : '없음'}</p>
+            <p>역할: {user ? user.role : '없음'}</p>
+            <p>관리자: {isAdmin ? '예' : '아니오'}</p>
+          </div>
+        )}
       </div>
 
       {/* 모드 전환 중 표시 (백엔드 호환성을 위해 추가) */}

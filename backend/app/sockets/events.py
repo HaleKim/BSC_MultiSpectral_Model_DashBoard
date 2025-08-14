@@ -70,7 +70,7 @@ def handle_stop_stream(data):
     else:
         logger.warning(f"중지할 스트리밍 작업이 없습니다: camera_id={camera_id}, client={client_sid}")
 
-# --- 시험 영상 분석 핸들러 (기존과 유사하게 단일 스트림으로 관리) ---
+# --- 시험 영상 분석 핸들러 (다중 스펙트럼 버전) ---
 @socketio.on('start_test_stream')
 def handle_start_test_stream(data):
     client_sid = request.sid
@@ -80,30 +80,62 @@ def handle_start_test_stream(data):
         logger.warning(f"기존 시험 영상 분석 중지: {client_sid}")
         task = video_tasks[client_sid].pop('test_video')
         task.kill()
-        
-    filename = data.get('filename')
-    if not filename:
-        emit('error', {'message': '영상 파일 이름이 필요합니다.'}, room=client_sid)
+    
+    # 다중 스펙트럼 분석을 위한 파라미터 추출
+    rgb_filename = data.get('rgb_filename') or data.get('filename')  # 하위 호환성
+    tir_filename = data.get('tir_filename') or data.get('filename')  # 하위 호환성
+    model = data.get('model', 'yolo11n_early_fusion.pt')
+    
+    if not rgb_filename:
+        emit('error', {'message': 'RGB 영상 파일 이름이 필요합니다.'}, room=client_sid)
         return
 
-    if '..' in filename or '/' in filename or '\\' in filename:
-        emit('error', {'message': '잘못된 파일 이름입니다.'}, room=client_sid)
+    # 파일 이름 보안 검사
+    for filename in [rgb_filename, tir_filename]:
+        if filename and ('..' in filename or '/' in filename or '\\' in filename):
+            emit('error', {'message': '잘못된 파일 이름입니다.'}, room=client_sid)
+            return
+
+    # 파일 경로 확인
+    rgb_path = os.path.join(current_app.root_path, '..', 'test_videos', rgb_filename)
+    tir_path = os.path.join(current_app.root_path, '..', 'test_videos', tir_filename) if tir_filename else rgb_path
+
+    if not os.path.exists(rgb_path):
+        emit('error', {'message': f"RGB 영상 '{rgb_filename}' 파일을 찾을 수 없습니다."}, room=client_sid)
+        return
+    
+    if tir_filename and not os.path.exists(tir_path):
+        emit('error', {'message': f"TIR 영상 '{tir_filename}' 파일을 찾을 수 없습니다."}, room=client_sid)
         return
 
-    video_path = os.path.join(current_app.root_path, '..', 'test_videos', filename)
-
-    if not os.path.exists(video_path):
-        emit('error', {'message': f"'{filename}' 파일을 찾을 수 없습니다."}, room=client_sid)
-        return
-
-    logger.info(f"시험 영상 스트리밍 시작 요청: {filename}, client={client_sid}")
+    logger.info(f"시험 영상 스트리밍 시작 요청: RGB={rgb_filename}, TIR={tir_filename}, Model={model}, client={client_sid}")
+    
+    # 분석 파라미터를 포함한 딕셔너리 전달
+    analysis_params = {
+        'rgb_path': rgb_path,
+        'tir_path': tir_path,
+        'model': model,
+        'is_multi_spectral': True
+    }
     
     task = eventlet.spawn(
         start_video_processing,
         current_app._get_current_object(),
-        video_path, # camera_id 대신 파일 경로 전달
+        analysis_params,  # 분석 파라미터 전달
         client_sid
     )
     # 테스트 영상은 'test_video'라는 특별한 키로 관리
     video_tasks[client_sid]['test_video'] = task
-    emit('response', {'message': f"시험 영상 '{filename}' 분석을 시작합니다."})
+    emit('response', {'message': f"다중 스펙트럼 영상 분석을 시작합니다. (RGB: {rgb_filename}, TIR: {tir_filename}, Model: {model})"})
+
+@socketio.on('stop_test_stream')
+def handle_stop_test_stream(data):
+    client_sid = request.sid
+    
+    if client_sid in video_tasks and 'test_video' in video_tasks[client_sid]:
+        task = video_tasks[client_sid].pop('test_video')
+        task.kill()
+        logger.info(f"사용자 요청으로 시험 영상 분석 중지: {client_sid}")
+        emit('response', {'message': '시험 영상 분석을 중지했습니다.'})
+    else:
+        logger.warning(f"중지할 시험 영상 분석 작업이 없습니다: {client_sid}")

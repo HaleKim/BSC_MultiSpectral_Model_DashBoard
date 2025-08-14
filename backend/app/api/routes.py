@@ -143,3 +143,31 @@ def get_test_videos():
     except Exception as e:
         print(f"테스트 영상 목록을 불러오는 중 오류 발생: {e}")
         return jsonify({"error": "Failed to load video list"}), 500
+
+# --- AI 모델 목록 반환 API ---
+@api_bp.route('/models', methods=['GET'])
+@jwt_required()
+def get_models():
+    """/backend/models_ai/ 폴더에 있는 .pt 모델 파일 목록을 반환합니다."""
+    try:
+        models_path = os.path.join(current_app.root_path, '..', 'models_ai')
+        
+        print(f"[*] 모델 폴더 경로: {os.path.abspath(models_path)}")
+        print(f"[*] 모델 폴더 존재 여부: {os.path.exists(models_path)}")
+        
+        if not os.path.exists(models_path):
+            # 기본 모델 목록 반환
+            return jsonify(['yolo11n_early_fusion.pt', 'yolo11n_mid_fusion.pt', 'yolo11n.pt'])
+
+        model_files = [f for f in os.listdir(models_path) if f.lower().endswith('.pt')]
+        
+        # 모델 파일이 없으면 기본 목록 반환
+        if not model_files:
+            return jsonify(['yolo11n_early_fusion.pt', 'yolo11n_mid_fusion.pt', 'yolo11n.pt'])
+        
+        print(f"[*] 발견된 모델 파일: {model_files}")
+        return jsonify(model_files)
+    except Exception as e:
+        print(f"모델 목록을 불러오는 중 오류 발생: {e}")
+        # 오류 시 기본 모델 목록 반환
+        return jsonify(['yolo11n_early_fusion.pt', 'yolo11n_mid_fusion.pt', 'yolo11n.pt'])
