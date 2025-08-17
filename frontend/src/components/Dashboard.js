@@ -1,14 +1,17 @@
 // src/components/Dashboard.js
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useContext } from 'react';
 import VideoStream from './VideoStream';
 import EventLog from './EventLog';
 import TestModePanel from './TestModePanel';
 import FullscreenViewer from './FullscreenViewer';
 import EventDetailViewer from './EventDetailViewer';
 import { initSocket, disconnectSocket, subscribeToEvent, sendEvent, getSocket } from '../services/socket';
+import { getDefaultModel } from '../services/api';
+import AuthContext from '../context/AuthContext';
 import alertSound from '../assets/alarm.mp3';
 
 const Dashboard = () => {
+  const { user } = useContext(AuthContext);
   const [serverMessage, setServerMessage] = useState('');
   const [mode, setMode] = useState('live');
 
@@ -34,6 +37,9 @@ const Dashboard = () => {
   // 모드 전환 중 상태 (백엔드 호환성을 위해 추가)
   const [isModeChanging, setIsModeChanging] = useState(false);
 
+  // 실시간 감시용 모델 관리 (간소화)
+  const [selectedLiveModel, setSelectedLiveModel] = useState('yolo11n_early_fusion.pt');
+
   const audioRef = useRef(null);
 
   // 소켓 연결/해제 및 이벤트 수신 전용 useEffect
@@ -58,7 +64,7 @@ const Dashboard = () => {
       
       if (typeof data.camera_id === 'number') {
         console.log(`카메라 ${data.camera_id} 프레임 처리 중...`);
-        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.tir } }));
+        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.rgb } }));
         setPersonDetected(prev => ({ ...prev, [data.camera_id]: data.person_detected }));
         console.log(`카메라 ${data.camera_id} 프레임 처리 완료`);
       } else if (data.camera_id === 'test_video') {
@@ -96,10 +102,13 @@ const Dashboard = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
-      // 모든 카메라에 대해 스트림 시작 요청
+      // 모든 카메라에 대해 스트림 시작 요청 (선택된 모델 포함)
       for (const id of cameraIds) {
-        console.log(`카메라 ${id} 스트림 시작 요청`);
-        sendEvent('start_stream', { camera_id: id });
+        console.log(`카메라 ${id + 1} 스트림 시작 요청 (모델: ${selectedLiveModel})`);
+        sendEvent('start_stream', { 
+          camera_id: id,
+          model: isAdmin ? selectedLiveModel : undefined  // 관리자만 모델 지정
+        });
         setIsStreaming(prev => ({ ...prev, [id]: true }));
       }
       
@@ -123,7 +132,7 @@ const Dashboard = () => {
     try {
       // 모든 카메라에 대해 스트림 중지 요청
       for (const id of cameraIds) {
-        console.log(`카메라 ${id} 스트림 중지 요청`);
+        console.log(`카메라 ${id + 1} 스트림 중지 요청`);
         sendEvent('stop_stream', { camera_id: id });
       }
       
@@ -162,9 +171,56 @@ const Dashboard = () => {
     }
   }, [personDetected]);
 
+  // 관리자 권한 체크 (AdminRoute와 동일한 기준)
+  const isAdmin = user && user.role === 'admin';
+  
+  // 디버깅: 사용자 정보 확인
+  useEffect(() => {
+    console.log('현재 사용자 정보:', user);
+    console.log('관리자 권한:', isAdmin);
+    if (user) {
+      console.log('사용자 역할:', user.role);
+    }
+  }, [user, isAdmin]);
+
+  // settings.json에서 기본 모델 동기화
+  useEffect(() => {
+    const loadDefaultModel = async () => {
+      try {
+        const response = await getDefaultModel();
+        const defaultModel = response.data.default_model;
+        setSelectedLiveModel(defaultModel);
+        localStorage.setItem('selectedLiveModel', defaultModel);
+        console.log('Dashboard: settings.json에서 기본 모델 로드:', defaultModel);
+        
+        // 모델 로드 후 즉시 스트림 재시작 (실시간 모드인 경우)
+        if (mode === 'live' && Object.values(isStreaming).some(streaming => streaming)) {
+          console.log('기본 모델 변경으로 인한 스트림 재시작');
+          stopAllStreams();
+          setTimeout(() => startAllStreams(), 1000);
+        }
+      } catch (error) {
+        // 오류 시 localStorage fallback
+        const savedModel = localStorage.getItem('selectedLiveModel');
+        if (savedModel) {
+          setSelectedLiveModel(savedModel);
+        }
+        console.error('기본 모델 로드 실패:', error);
+      }
+    };
+    
+    loadDefaultModel();
+  }, [mode, isStreaming, startAllStreams, stopAllStreams]);
+
   // 모드 변경 핸들러 (백엔드 호환성을 위해 추가)
   const handleModeChange = (newMode) => {
     if (isModeChanging) return; // 모드 변경 중이면 무시
+    
+    // 테스트 모드는 관리자만 접근 가능 (AdminRoute와 동일한 체크)
+    if (newMode === 'test' && (!user || user.role !== 'admin')) {
+      alert('테스트 영상 분석 기능은 관리자만 사용할 수 있습니다.');
+      return;
+    }
     
     console.log(`모드 변경: ${mode} -> ${newMode}`);
     setMode(newMode);
@@ -183,16 +239,29 @@ const Dashboard = () => {
         >
           {isModeChanging && mode === 'live' ? '전환 중...' : '실시간 다중 감시'}
         </button>
-        <button
-          onClick={() => handleModeChange('test')}
-          disabled={isModeChanging}
-          className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
-            mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
-          } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {isModeChanging && mode === 'test' ? '전환 중...' : '시험 영상 분석'}
-        </button>
+        {user && isAdmin && (
+          <button
+            onClick={() => handleModeChange('test')}
+            disabled={isModeChanging}
+            className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
+              mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
+            } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isModeChanging && mode === 'test' ? '전환 중...' : '시험 영상 분석 (관리자)'}
+          </button>
+        )}
+        
+        {/* 임시 디버깅 정보 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-xs text-gray-400 mt-2">
+            <p>사용자: {user ? user.username : '없음'}</p>
+            <p>역할: {user ? user.role : '없음'}</p>
+            <p>관리자: {isAdmin ? '예' : '아니오'}</p>
+          </div>
+        )}
       </div>
+
+
 
       {/* 모드 전환 중 표시 (백엔드 호환성을 위해 추가) */}
       {isModeChanging && (
@@ -206,20 +275,24 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-6">
           {mode === 'live' ? (
             <div className="grid grid-cols-2 gap-4">
-              <VideoStream
-                title="카메라 1 - RGB"
-                frameData={liveFrames[0]?.rgb}
-                isStreaming={isStreaming[0]}
-                onStreamClick={() => openViewer(0, 'rgb', '카메라 1 - RGB')}
-                personDetected={personDetected[0]}
-              />
-              <VideoStream
-                title="카메라 1 - TIR"
-                frameData={liveFrames[0]?.tir}
-                isStreaming={isStreaming[0]}
-                onStreamClick={() => openViewer(0, 'tir', '카메라 1 - TIR')}
-                personDetected={personDetected[0]}
-              />
+              {cameraIds.map(cameraId => (
+                <React.Fragment key={`${cameraId}-rgb`}>
+                  <VideoStream
+                    title={`카메라 ${cameraId + 1} - RGB`}
+                    frameData={liveFrames[cameraId]?.rgb}
+                    isStreaming={isStreaming[cameraId]}
+                    onStreamClick={() => openViewer(cameraId, 'rgb', `카메라 ${cameraId + 1} - RGB`)}
+                    personDetected={personDetected[cameraId]}
+                  />
+                  <VideoStream
+                    title={`카메라 ${cameraId + 1} - TIR`}
+                    frameData={liveFrames[cameraId]?.tir}
+                    isStreaming={isStreaming[cameraId]}
+                    onStreamClick={() => openViewer(cameraId, 'tir', `카메라 ${cameraId + 1} - TIR`)}
+                    personDetected={personDetected[cameraId]}
+                  />
+                </React.Fragment>
+              ))}
             </div>
           ) : (
             <TestModePanel />
@@ -230,7 +303,10 @@ const Dashboard = () => {
           {serverMessage && (
             <div className="p-4 bg-blue-900 rounded-lg text-center mb-4">{serverMessage}</div>
           )}
-          <EventLog onOpenFull={handleOpenFullEvent} />
+          {/* 실시간 모드에서만 이벤트 로그 표시 */}
+          {mode === 'live' && (
+            <EventLog onOpenFull={handleOpenFullEvent} />
+          )}
         </div>
       </div>
 

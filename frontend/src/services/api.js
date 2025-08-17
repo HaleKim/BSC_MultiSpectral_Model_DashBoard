@@ -41,6 +41,14 @@ export const getModels = () => {
   return apiClient.get('/api/models');
 };
 
+export const getDefaultModel = () => {
+  return apiClient.get('/api/default-model');
+};
+
+export const setDefaultModel = (model) => {
+  return apiClient.post('/api/default-model', { model });
+};
+
 // --- 관리자 API ---
 export const getAllUsers = () => {
     return apiClient.get('/api/users');

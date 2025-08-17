@@ -1,7 +1,7 @@
 // /frontend/src/components/AdminPanel.js (수정된 최종본)
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getAllUsers, addUser, deleteUser, getAllCameras, addCamera, deleteCamera } from '../services/api';
+import { getAllUsers, addUser, deleteUser, getAllCameras, addCamera, deleteCamera, getModels, getDefaultModel, setDefaultModel } from '../services/api';
 
 const AdminPanel = () => {
     const [users, setUsers] = useState([]);
@@ -16,6 +16,11 @@ const AdminPanel = () => {
     const [newCamSource, setNewCamSource] = useState('');
     const [newCamLocation, setNewCamLocation] = useState('');
     const [message, setMessage] = useState({ type: '', text: '' });
+    
+    // 모델 관리 상태
+    const [availableModels, setAvailableModels] = useState([]);
+    const [currentDefaultModel, setCurrentDefaultModel] = useState('');
+    const [isModelsLoading, setIsModelsLoading] = useState(false);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -35,10 +40,36 @@ const AdminPanel = () => {
         }
     }, []);
 
+    const fetchModels = useCallback(async () => {
+        setIsModelsLoading(true);
+        try {
+            const [modelsResponse, defaultModelResponse] = await Promise.all([
+                getModels(),
+                getDefaultModel()
+            ]);
+            
+            setAvailableModels(modelsResponse.data);
+            
+            // settings.json에서 현재 기본 모델 가져오기
+            const defaultModel = defaultModelResponse.data.default_model;
+            setCurrentDefaultModel(defaultModel);
+            
+            // localStorage도 동기화
+            localStorage.setItem('selectedLiveModel', defaultModel);
+            
+            console.log('settings.json에서 기본 모델 로드:', defaultModel);
+        } catch (err) {
+            setMessage({ type: 'error', text: '모델 정보 로딩 실패' });
+        } finally {
+            setIsModelsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         fetchUsers();
         fetchCameras();
-    }, [fetchUsers, fetchCameras]);
+        fetchModels();
+    }, [fetchUsers, fetchCameras, fetchModels]);
 
     const handleAddUser = async (e) => {
         e.preventDefault();
@@ -108,8 +139,28 @@ const AdminPanel = () => {
         }
     };
 
+    const handleModelChange = async (newModel) => {
+        try {
+            setIsModelsLoading(true);
+            
+            // 백엔드 서버 설정 파일 업데이트
+            await setDefaultModel(newModel);
+            
+            // localStorage에 새 모델 저장 (프론트엔드 동기화)
+            localStorage.setItem('selectedLiveModel', newModel);
+            setCurrentDefaultModel(newModel);
+            
+            setMessage({ type: 'success', text: `기본 모델이 '${newModel}'로 변경되었습니다. 새 스트림에서 적용됩니다.` });
+            console.log('실시간 감시 기본 모델 변경:', newModel);
+        } catch (err) {
+            setMessage({ type: 'error', text: err.response?.data?.error || '모델 변경 실패' });
+        } finally {
+            setIsModelsLoading(false);
+        }
+    };
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 사용자 관리 패널 */}
             <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
                 <h2 className="text-xl font-semibold mb-4 text-white">사용자 관리</h2>
@@ -202,6 +253,81 @@ const AdminPanel = () => {
                             ))}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            {/* AI 모델 관리 패널 */}
+            <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
+                <h2 className="text-xl font-semibold mb-4 text-white">AI 모델 관리</h2>
+                
+                <div className="mb-6 bg-gray-700 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-white">실시간 감시 기본 모델</h3>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                현재 기본 모델
+                            </label>
+                            <div className="px-3 py-2 bg-gray-600 rounded-lg text-cyan-400 font-mono text-sm">
+                                {currentDefaultModel || '로딩 중...'}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                새 기본 모델 선택
+                            </label>
+                            <select
+                                onChange={(e) => handleModelChange(e.target.value)}
+                                disabled={isModelsLoading}
+                                className="w-full px-3 py-2 text-white bg-gray-600 border border-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                value=""
+                            >
+                                <option value="">모델을 선택하세요</option>
+                                {availableModels.map((model) => (
+                                    <option key={model} value={model}>
+                                        {model}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        {message.text && (
+                            <p className={`text-sm ${message.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
+                                {message.text}
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <h4 className="text-md font-semibold mb-3 text-white">사용 가능한 모델 목록</h4>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {isModelsLoading ? (
+                            <div className="text-gray-400 text-sm">모델 목록을 불러오는 중...</div>
+                        ) : availableModels.length > 0 ? (
+                            availableModels.map((model) => (
+                                <div
+                                    key={model}
+                                    className={`px-3 py-2 rounded text-sm font-mono ${
+                                        model === currentDefaultModel
+                                            ? 'bg-cyan-600 text-white'
+                                            : 'bg-gray-600 text-gray-300'
+                                    }`}
+                                >
+                                    {model}
+                                    {model === currentDefaultModel && (
+                                        <span className="ml-2 text-xs">(현재 기본)</span>
+                                    )}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-gray-400 text-sm">사용 가능한 모델이 없습니다.</div>
+                        )}
+                    </div>
+                    <div className="mt-3 text-xs text-gray-400">
+                        <p>총 {availableModels.length}개 모델 사용 가능</p>
+                        <p>모델 변경 시 즉시 실시간 감시에 적용됩니다.</p>
+                    </div>
                 </div>
             </div>
         </div>
