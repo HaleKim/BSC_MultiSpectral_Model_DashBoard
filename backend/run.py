@@ -34,4 +34,4 @@ if __name__ == '__main__':
     #     print("="*50)
 
     print("Flask-SocketIO 서버를 http://0.0.0.0:5001 에서 시작합니다...")
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True, log_output=False)
+    socketio.run(app, host='0.0.0.0', port=5001, use_reloader=False, log_output=False)

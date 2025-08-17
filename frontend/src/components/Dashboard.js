@@ -15,13 +15,13 @@ const Dashboard = () => {
   const [serverMessage, setServerMessage] = useState('');
   const [mode, setMode] = useState('live');
 
-  // 카메라가 1대라면 [0], 2대면 [0,1]로 변경
-  const cameraIds = useMemo(() => [0], []);
+  // 카메라가 1대라면 [1], 2대면 [1,2]로 변경
+  const cameraIds = useMemo(() => [1], []);
 
   // 프레임/상태
-  const [liveFrames, setLiveFrames] = useState({ 0: { rgb: null, tir: null } });
-  const [isStreaming, setIsStreaming] = useState({ 0: false });
-  const [personDetected, setPersonDetected] = useState({ 0: false });
+  const [liveFrames, setLiveFrames] = useState({ 1: { rgb: null, tir: null } });
+  const [isStreaming, setIsStreaming] = useState({ 1: false });
+  const [personDetected, setPersonDetected] = useState({ 1: false });
 
   // ✅ 모달 상태: 스냅샷이 아니라 "선택 정보"만 저장
   // { cameraId, stream: 'rgb' | 'tir', title }
@@ -64,7 +64,7 @@ const Dashboard = () => {
       
       if (typeof data.camera_id === 'number') {
         console.log(`카메라 ${data.camera_id} 프레임 처리 중...`);
-        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.rgb } }));
+        setLiveFrames(prev => ({ ...prev, [data.camera_id]: { rgb: data.rgb, tir: data.tir } }));
         setPersonDetected(prev => ({ ...prev, [data.camera_id]: data.person_detected }));
         console.log(`카메라 ${data.camera_id} 프레임 처리 완료`);
       } else if (data.camera_id === 'test_video') {
@@ -104,7 +104,7 @@ const Dashboard = () => {
       
       // 모든 카메라에 대해 스트림 시작 요청 (선택된 모델 포함)
       for (const id of cameraIds) {
-        console.log(`카메라 ${id + 1} 스트림 시작 요청 (모델: ${selectedLiveModel})`);
+        console.log(`카메라 ${id} 스트림 시작 요청 (모델: ${selectedLiveModel})`);
         sendEvent('start_stream', { 
           camera_id: id,
           model: isAdmin ? selectedLiveModel : undefined  // 관리자만 모델 지정
@@ -113,8 +113,8 @@ const Dashboard = () => {
       }
       
       // 스트림 상태 초기화
-      setLiveFrames({ 0: { rgb: null, tir: null } });
-      setPersonDetected({ 0: false });
+      setLiveFrames({ 1: { rgb: null, tir: null } });
+      setPersonDetected({ 1: false });
       
       console.log('실시간 스트림 시작 완료');
     } catch (error) {
@@ -132,14 +132,14 @@ const Dashboard = () => {
     try {
       // 모든 카메라에 대해 스트림 중지 요청
       for (const id of cameraIds) {
-        console.log(`카메라 ${id + 1} 스트림 중지 요청`);
+        console.log(`카메라 ${id} 스트림 중지 요청`);
         sendEvent('stop_stream', { camera_id: id });
       }
       
       // 스트림 상태 초기화
-      setIsStreaming({ 0: false });
-      setLiveFrames({ 0: { rgb: null, tir: null } });
-      setPersonDetected({ 0: false });
+      setIsStreaming({ 1: false });
+      setLiveFrames({ 1: { rgb: null, tir: null } });
+      setPersonDetected({ 1: false });
       
       console.log('모든 스트림 중지 완료');
     } catch (error) {
@@ -210,7 +210,7 @@ const Dashboard = () => {
     };
     
     loadDefaultModel();
-  }, [mode, isStreaming, startAllStreams, stopAllStreams]);
+  }, [mode, startAllStreams, stopAllStreams]);
 
   // 모드 변경 핸들러 (백엔드 호환성을 위해 추가)
   const handleModeChange = (newMode) => {
@@ -278,17 +278,17 @@ const Dashboard = () => {
               {cameraIds.map(cameraId => (
                 <React.Fragment key={`${cameraId}-rgb`}>
                   <VideoStream
-                    title={`카메라 ${cameraId + 1} - RGB`}
+                    title={`카메라 ${cameraId} - RGB`}
                     frameData={liveFrames[cameraId]?.rgb}
                     isStreaming={isStreaming[cameraId]}
-                    onStreamClick={() => openViewer(cameraId, 'rgb', `카메라 ${cameraId + 1} - RGB`)}
+                    onStreamClick={() => openViewer(cameraId, 'rgb', `카메라 ${cameraId} - RGB`)}
                     personDetected={personDetected[cameraId]}
                   />
                   <VideoStream
-                    title={`카메라 ${cameraId + 1} - TIR`}
+                    title={`카메라 ${cameraId} - TIR`}
                     frameData={liveFrames[cameraId]?.tir}
                     isStreaming={isStreaming[cameraId]}
-                    onStreamClick={() => openViewer(cameraId, 'tir', `카메라 ${cameraId + 1} - TIR`)}
+                    onStreamClick={() => openViewer(cameraId, 'tir', `카메라 ${cameraId} - TIR`)}
                     personDetected={personDetected[cameraId]}
                   />
                 </React.Fragment>
