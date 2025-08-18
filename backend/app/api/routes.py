@@ -1,6 +1,6 @@
 # /backend/app/api/routes.py
 
-from flask import jsonify, current_app, request
+from flask import jsonify, current_app, request, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt
 from functools import wraps
 from . import api_bp
@@ -21,18 +21,6 @@ def admin_required():
                 return jsonify(msg="관리자 권한이 필요합니다."), 403
         return decorator
     return wrapper
-
-# @api_bp.route('/models', methods=['GET'])
-# @jwt_required()
-# def get_models():
-#     """시스템에 등록된 모든 AI 모델 목록을 반환합니다."""
-#     # 이 부분은 model_manager가 없으므로 임시 데이터로 응답하거나 구현해야 합니다.
-#     # 현재 파일 구조에 model_manager.py가 없어서 임시 응답으로 대체합니다.
-#     temp_models = [
-#         {'name': 'yolo11n_early_fusion.pt', 'type': 'Early Fusion'},
-#         {'name': 'yolo11n_mid_fusion.pt', 'type': 'Mid Fusion'}
-#     ]
-#     return jsonify(temp_models)
 
 @api_bp.route('/events', methods=['GET'])
 @jwt_required()
@@ -79,10 +67,18 @@ def delete_user(user_id):
     user_to_delete = User.query.get_or_404(user_id)
     if user_to_delete.username == 'admin': # 'admin' 계정은 삭제 방지
         return jsonify({"error": "'admin' 사용자는 삭제할 수 없습니다."}), 403
-        
-    db.session.delete(user_to_delete)
-    db.session.commit()
-    return jsonify({"message": f"사용자 '{user_to_delete.username}'가 삭제되었습니다."}), 200
+    
+    try:
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        return jsonify({"message": f"사용자 '{user_to_delete.username}'가 삭제되었습니다."}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"사용자 삭제 오류: {str(e)}")
+        # 권한 문제인 경우
+        if "DELETE command denied" in str(e):
+            return jsonify({"error": "데이터베이스 삭제 권한이 없습니다. 관리자에게 문의하세요."}), 403
+        return jsonify({"error": f"사용자 삭제 중 오류가 발생했습니다: {str(e)}"}), 500
 
 # --- 카메라 API 엔드포인트 (신규 추가) ---
 @api_bp.route('/cameras', methods=['GET'])
@@ -119,9 +115,18 @@ def add_camera():
 @admin_required()
 def delete_camera(camera_id):
     cam_to_delete = Camera.query.get_or_404(camera_id)
-    db.session.delete(cam_to_delete)
-    db.session.commit()
-    return jsonify({"message": f"카메라 '{cam_to_delete.camera_name}'가 삭제되었습니다."}), 200
+    
+    try:
+        db.session.delete(cam_to_delete)
+        db.session.commit()
+        return jsonify({"message": f"카메라 '{cam_to_delete.camera_name}'가 삭제되었습니다."}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"카메라 삭제 오류: {str(e)}")
+        # 권한 문제인 경우
+        if "DELETE command denied" in str(e):
+            return jsonify({"error": "데이터베이스 삭제 권한이 없습니다. 관리자에게 문의하세요."}), 403
+        return jsonify({"error": f"카메라 삭제 중 오류가 발생했습니다: {str(e)}"}), 500
 
 # --- 테스트 영상 목록 반환 API ---
 @api_bp.route('/test_videos', methods=['GET'])
@@ -131,18 +136,34 @@ def get_test_videos():
     try:
         test_videos_path = os.path.join(current_app.root_path, '..', 'test_videos')
         
-        # # --- 디버깅 코드 ---
-        # print(f"[*] 현재 확인 중인 절대 경로: {os.path.abspath(test_videos_path)}")
-        # print(f"[*] 해당 경로에 폴더 존재 여부: {os.path.exists(test_videos_path)}")
-        
         if not os.path.exists(test_videos_path):
             return jsonify([])
 
-        video_files = [f for f in os.listdir(test_videos_path) if f.lower().endswith(('.mp4', '.avi', '.mov'))]
-        return jsonify(video_files)
+        video_files = [f for f in os.listdir(test_videos_path) if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv'))]
+        # RGB와 TIR로 분류
+        rgb_videos = [f for f in video_files if 'rgb' in f.lower()]
+        tir_videos = [f for f in video_files if 'tir' in f.lower()]
+        
+        return jsonify({
+            'all': sorted(video_files),
+            'rgb': sorted(rgb_videos),
+            'tir': sorted(tir_videos)
+        })
     except Exception as e:
         print(f"테스트 영상 목록을 불러오는 중 오류 발생: {e}")
         return jsonify({"error": "Failed to load video list"}), 500
+
+# --- 테스트 영상 서빙 API ---
+@api_bp.route('/test_videos/<filename>', methods=['GET'])
+@jwt_required()
+def serve_test_video(filename):
+    """테스트 영상 파일을 서빙합니다."""
+    try:
+        test_videos_path = os.path.join(current_app.root_path, '..', 'test_videos')
+        return send_from_directory(test_videos_path, filename)
+    except Exception as e:
+        print(f"테스트 영상 서빙 중 오류 발생: {e}")
+        return jsonify({"error": "Video not found"}), 404
 
 # --- AI 모델 목록 반환 API ---
 @api_bp.route('/models', methods=['GET'])

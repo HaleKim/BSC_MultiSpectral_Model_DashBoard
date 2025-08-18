@@ -1,6 +1,7 @@
 # /backend/run.py
 import eventlet
-eventlet.monkey_patch()
+# OpenCV와의 호환성을 위해 일부 모듈만 패치
+eventlet.monkey_patch(socket=True, select=True, thread=False, time=True)
 from dotenv import load_dotenv
 import os
 import logging

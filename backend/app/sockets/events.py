@@ -22,13 +22,32 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info(f"클라이언트 연결 끊어짐: {request.sid}")
+    client_sid = request.sid
+    logger.info(f"클라이언트 연결 끊어짐: {client_sid}")
+    
     # 해당 클라이언트가 실행 중인 모든 비디오 작업을 종료
-    if request.sid in video_tasks:
-        for camera_id, task in video_tasks[request.sid].items():
-            task.kill()
-            logger.info(f"카메라 {camera_id} 스트리밍 작업 종료: {request.sid}")
-        del video_tasks[request.sid]
+    if client_sid in video_tasks:
+        # 사전 변경 중 반복 오류 방지를 위해 복사본 사용
+        tasks_to_kill = list(video_tasks[client_sid].items())
+        for camera_id, task in tasks_to_kill:
+            try:
+                task.kill()
+                logger.info(f"카메라 {camera_id} 스트리밍 작업 종료: {client_sid}")
+            except Exception as e:
+                logger.error(f"작업 종료 오류 (카메라 {camera_id}): {e}")
+        
+        # 클라이언트 작업 딕셔너리 정리
+        try:
+            del video_tasks[client_sid]
+        except KeyError:
+            pass  # 이미 삭제된 경우 무시
+    
+    # 비디오 제어 상태도 정리
+    try:
+        from ..services.video_service import clear_test_video_control
+        clear_test_video_control(client_sid)
+    except Exception as e:
+        logger.error(f"비디오 제어 상태 정리 오류: {e}")
 
 @socketio.on('start_stream')
 def handle_start_stream(data):
@@ -57,7 +76,7 @@ def handle_start_stream(data):
             logger.error(f"Failed to load default model, falling back. Error: {e}")
             model_name = 'yolo11n_early_fusion.pt'
 
-    logger.info(f"Requesting to start stream: camera_id={camera_id}, model={model_name}, client={client_sid}")
+    logger.info(f"[실시간 스트림 시작 요청] camera_id={camera_id}, model={model_name}, client={client_sid}")
 
     # 일관된 stream_config 생성
     stream_config = {
@@ -86,10 +105,10 @@ def handle_stop_stream(data):
     if client_sid in video_tasks and camera_id in video_tasks[client_sid]:
         task = video_tasks[client_sid].pop(camera_id)
         task.kill()
-        logger.info(f"사용자 요청으로 카메라 {camera_id} 스트리밍 중지: {client_sid}")
+        logger.info(f"[실시간 스트림 중지] 사용자 요청으로 카메라 {camera_id} 스트리밍 중지: {client_sid}")
         emit('response', {'message': f'카메라 {camera_id} 스트리밍을 중지합니다.'})
     else:
-        logger.warning(f"중지할 스트리밍 작업이 없습니다: camera_id={camera_id}, client={client_sid}")
+        logger.warning(f"[실시간 스트림 중지] 중지할 스트리밍 작업이 없습니다: camera_id={camera_id}, client={client_sid}")
 
 # --- 시험 영상 분석 핸들러 (다중 스펙트럼 버전) ---
 @socketio.on('start_test_stream')
@@ -165,3 +184,25 @@ def handle_stop_test_stream(data):
         emit('response', {'message': '시험 영상 분석을 중지했습니다.'})
     else:
         logger.warning(f"중지할 시험 영상 분석 작업이 없습니다: {client_sid}")
+
+@socketio.on('test_video_control')
+def handle_test_video_control(data):
+    """시험 영상 재생 제어 (일시정지/재생/시간이동/속도변경)"""
+    client_sid = request.sid
+    action = data.get('action')
+    
+    logger.info(f"시험 영상 제어 요청: {action}, 클라이언트: {client_sid}, 데이터: {data}")
+    
+    # 비디오 서비스의 제어 함수 호출
+    from ..services.video_service import set_test_video_control
+    
+    if action == 'pause':
+        set_test_video_control(client_sid, 'pause', time=data.get('time', 0))
+    elif action == 'play':
+        set_test_video_control(client_sid, 'play', time=data.get('time', 0))
+    elif action == 'seek':
+        set_test_video_control(client_sid, 'seek', time=data.get('time', 0))
+    elif action == 'playback_rate':
+        set_test_video_control(client_sid, 'playback_rate', rate=data.get('rate', 1.0))
+    
+    emit('response', {'message': f'비디오 제어 명령 처리 완료: {action}'})

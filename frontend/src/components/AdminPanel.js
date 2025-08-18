@@ -97,17 +97,13 @@ const AdminPanel = () => {
             try {
                 const response = await deleteUser(user.id);
                 setMessage({ type: 'success', text: response.data.message });
-                fetchUsers();
+                fetchUsers(); // 사용자 목록 새로고침
             } catch (err) {
                 setMessage({ type: 'error', text: err.response?.data?.error || '서버 통신 오류' });
+                console.error('사용자 삭제 오류:', err);
             }
         }
     };
-
-    useEffect(() => {
-        fetchUsers();
-        fetchCameras();
-    }, [fetchUsers, fetchCameras]);
 
     const handleAddCamera = async (e) => {
         e.preventDefault();
@@ -140,6 +136,11 @@ const AdminPanel = () => {
     };
 
     const handleModelChange = async (newModel) => {
+        if (!newModel || newModel === currentDefaultModel) {
+            setMessage({ type: 'error', text: '변경할 모델을 선택해주세요.' });
+            return;
+        }
+
         try {
             setIsModelsLoading(true);
             
@@ -150,10 +151,19 @@ const AdminPanel = () => {
             localStorage.setItem('selectedLiveModel', newModel);
             setCurrentDefaultModel(newModel);
             
-            setMessage({ type: 'success', text: `기본 모델이 '${newModel}'로 변경되었습니다. 새 스트림에서 적용됩니다.` });
+            setMessage({ 
+                type: 'success', 
+                text: `기본 모델이 '${newModel}'로 변경되었습니다. 새로운 실시간 감시 세션에서 적용됩니다.` 
+            });
             console.log('실시간 감시 기본 모델 변경:', newModel);
+            
+            // 3초 후 메시지 자동 제거
+            setTimeout(() => {
+                setMessage({ type: '', text: '' });
+            }, 3000);
         } catch (err) {
             setMessage({ type: 'error', text: err.response?.data?.error || '모델 변경 실패' });
+            console.error('모델 변경 오류:', err);
         } finally {
             setIsModelsLoading(false);
         }
@@ -200,9 +210,16 @@ const AdminPanel = () => {
                                     <td className="p-2">{user.rank}</td>
                                     <td className="p-2">{user.role}</td>
                                     <td className="p-2">
-                                        <button onClick={() => handleDeleteUser(user)}
-                                            className="text-red-500 hover:text-red-400 text-sm"
-                                            disabled={user.username === 'admin'}>
+                                        <button 
+                                            onClick={() => handleDeleteUser(user)}
+                                            className={`text-sm ${
+                                                user.username === 'admin' 
+                                                    ? 'text-gray-500 cursor-not-allowed' 
+                                                    : 'text-red-500 hover:text-red-400'
+                                            }`}
+                                            disabled={user.username === 'admin'}
+                                            title={user.username === 'admin' ? 'admin 계정은 삭제할 수 없습니다' : '사용자 삭제'}
+                                        >
                                             삭제
                                         </button>
                                     </td>

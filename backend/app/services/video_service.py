@@ -1,17 +1,22 @@
 # /backend/app/services/video_service.py (사용자님 코드 기반 최종 수정본)
 
+# OpenCV를 가장 먼저 임포트하여 비디오 백엔드 초기화 우선순위 확보
 import cv2
 import numpy as np
 import base64
+import time
+import os
+import threading
+from collections import deque
+from datetime import datetime
+import json
+
+# Flask 관련 임포트
 from flask import current_app
 from ..extensions import socketio, db
 from ..models.db_models import DetectionEvent, EventFile, Camera
-import time
-from datetime import datetime
-import json
-from collections import deque
-import os
-import threading
+
+# AI 관련 임포트는 마지막에
 from ultralytics import YOLO
 from ultralytics.nn.modules import conv
 
@@ -45,6 +50,56 @@ MODEL_TYPE = 'early_fusion'
 RECORD_SECONDS = 10
 FPS = 20
 RECORDINGS_FOLDER = "event_recordings"
+
+# --- 시험 영상 제어용 전역 변수 ---
+test_video_controls = {}  # 클라이언트별 비디오 제어 상태 저장
+
+def set_test_video_control(sid, action, **kwargs):
+    """시험 영상 제어 상태 설정"""
+    if sid not in test_video_controls:
+        test_video_controls[sid] = {
+            'is_paused': False,
+            'current_time': 0.0,
+            'playback_rate': 1.0,
+            'seek_time': None
+        }
+    
+    old_state = test_video_controls[sid].copy()
+    
+    if action == 'pause':
+        test_video_controls[sid]['is_paused'] = True
+        if 'time' in kwargs:
+            test_video_controls[sid]['current_time'] = float(kwargs['time'])
+    elif action == 'play':
+        test_video_controls[sid]['is_paused'] = False
+        if 'time' in kwargs:
+            test_video_controls[sid]['current_time'] = float(kwargs['time'])
+    elif action == 'seek':
+        test_video_controls[sid]['seek_time'] = float(kwargs['time'])
+        test_video_controls[sid]['current_time'] = float(kwargs['time'])
+    elif action == 'playback_rate':
+        old_rate = test_video_controls[sid]['playback_rate']
+        new_rate = float(kwargs['rate'])
+        test_video_controls[sid]['playback_rate'] = new_rate
+        if old_rate != new_rate:
+            print(f"[비디오 제어] 재생 속도 변경: {old_rate}x -> {new_rate}x")
+    
+    print(f"[비디오 제어] 클라이언트 {sid}: {action}, 상태: {test_video_controls[sid]}")
+
+def get_test_video_control(sid):
+    """시험 영상 제어 상태 조회"""
+    return test_video_controls.get(sid, {
+        'is_paused': False,
+        'current_time': 0.0,
+        'playback_rate': 1.0,
+        'seek_time': None
+    })
+
+def clear_test_video_control(sid):
+    """시험 영상 제어 상태 정리"""
+    if sid in test_video_controls:
+        del test_video_controls[sid]
+        print(f"[비디오 제어] 클라이언트 {sid} 제어 상태 정리 완료")
 
 # --- Confidence 임계값 설정 ---
 PERSON_CONFIDENCE_THRESHOLD = 0.7  # 사람 탐지 임계값: 70% (BBox 표시 기준과 동일)
@@ -143,7 +198,11 @@ def start_video_processing(app, sid, stream_config):
     
     # 소스 결정
     if is_live:
-        video_source = int(stream_config.get('camera_id', 1)) - 1 # camera_id는 1부터 시작, VideoCapture는 0부터 시작
+        # camera_id를 직접 사용 (1이면 1, 0이면 0)
+        camera_id_raw = stream_config.get('camera_id', 0)
+        # camera_id가 1이면 실제로는 0번 카메라 사용 (Windows 기본 웹캠)
+        video_source = 0 if camera_id_raw == 1 else int(camera_id_raw) - 1
+        print(f"카메라 ID {camera_id_raw} → 비디오 소스 {video_source}")
         rgb_path = None
         tir_path = None
     else: # 시험 영상
@@ -162,12 +221,35 @@ def start_video_processing(app, sid, stream_config):
     
     # 3. 비디오 캡처 초기화 ---
     if is_live:
-        cap = cv2.VideoCapture(video_source, cv2.CAP_DSHOW)
+        # Windows에서 웹캠 접근을 위한 다양한 백엔드 시도
+        cap = None
+        backends_to_try = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+        
+        for backend in backends_to_try:
+            print(f"백엔드 {backend}로 카메라 {video_source} 열기 시도...")
+            cap = cv2.VideoCapture(video_source, backend)
+            if cap.isOpened():
+                print(f"백엔드 {backend}로 카메라 {video_source} 열기 성공!")
+                break
+            cap.release()
+            cap = None
+        
+        # 모든 백엔드 실패시 기본 방식으로 시도
+        if cap is None:
+            print("모든 백엔드 실패, 기본 방식으로 시도...")
+            cap = cv2.VideoCapture(video_source)
     else:
         cap = cv2.VideoCapture(video_source)
 
-    if not cap.isOpened():
-        socketio.emit('error', {'message': f"비디오 소스({video_source})를 열 수 없습니다."}, room=sid)
+    if not cap or not cap.isOpened():
+        error_msg = f"비디오 소스({video_source})를 열 수 없습니다."
+        if is_live:
+            error_msg += f" 카메라 ID: {camera_id_for_db}, 실제 소스: {video_source}"
+            print(f"[ERROR] {error_msg}")
+            # 카메라 정보 확인
+            print(f"[DEBUG] OpenCV 버전: {cv2.__version__}")
+            print(f"[DEBUG] 사용 가능한 백엔드들: {[cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]}")
+        socketio.emit('error', {'message': error_msg}, room=sid)
         return
 
     tir_cap = None
@@ -182,14 +264,66 @@ def start_video_processing(app, sid, stream_config):
     frame_buffer = deque(maxlen=FPS * RECORD_SECONDS)
     last_event_time = 0
     event_cooldown = 30
+    
+    # 시험 영상인 경우 제어 상태 초기화
+    if is_test_video:
+        test_video_controls[sid] = {
+            'is_paused': False,
+            'current_time': 0.0,
+            'playback_rate': 1.0,
+            'seek_time': None,
+            '_last_logged_rate': None  # 로깅 추적용
+        }
 
     if is_live:
-        print(f"카메라 {video_source} 스트리밍 시작 (모델: {model_name})")
+        print(f"[실시간] 카메라 {video_source} 스트리밍 시작 (모델: {model_name}, 클라이언트: {sid})")
+        if cap:
+            print(f"[실시간] 카메라 설정 - 해상도: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}, FPS: {cap.get(cv2.CAP_PROP_FPS)}")
     else:
-        print(f"시험 영상 분석 시작: RGB={os.path.basename(rgb_path)}, TIR={os.path.basename(tir_path)}, 모델={model_name}")
+        print(f"[시험 영상] 분석 시작: RGB={os.path.basename(rgb_path)}, TIR={os.path.basename(tir_path)}, 모델={model_name}, 클라이언트: {sid}")
 
     with app.app_context():
         while True:
+            # 시험 영상인 경우 제어 상태 확인
+            if is_test_video:
+                control_state = get_test_video_control(sid)
+                
+                # 시간 이동 요청 처리
+                if control_state.get('seek_time') is not None:
+                    seek_time = control_state['seek_time']
+                    video_fps = cap.get(cv2.CAP_PROP_FPS)
+                    if video_fps <= 0:
+                        video_fps = 30  # 기본값 설정
+                    
+                    seek_frame = int(seek_time * video_fps)
+                    print(f"[비디오 제어] 시간 이동 요청: {seek_time}초 -> {seek_frame}프레임 (FPS: {video_fps})")
+                    
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+                    if tir_cap:
+                        tir_cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+                    
+                    # 시간 이동 완료 후 seek_time 초기화
+                    test_video_controls[sid]['seek_time'] = None
+                    print(f"[비디오 제어] 시간 이동 실행 완료: {seek_time}초")
+                
+                # 일시정지 상태 확인
+                if control_state.get('is_paused', False):
+                    socketio.sleep(0.1)  # 일시정지 중에는 대기
+                    continue
+                
+                # 재생 속도 적용 (FPS 조정)
+                playback_rate = control_state.get('playback_rate', 1.0)
+                base_fps = max(FPS, 20)  # 기본 FPS
+                adjusted_fps = base_fps * playback_rate
+                
+                # 배속 변경 시 로깅 (1회만)
+                last_logged_rate = control_state.get('_last_logged_rate')
+                if last_logged_rate != playback_rate:
+                    print(f"[비디오 제어] 재생 속도 적용: {playback_rate}x, 기본 FPS: {base_fps}, 조정된 FPS: {adjusted_fps}")
+                    test_video_controls[sid]['_last_logged_rate'] = playback_rate
+            else:
+                adjusted_fps = FPS
+            
             ret, frame_rgb = cap.read()
             if not ret:
                 if is_test_video: # 시험 영상이면 반복 재생
@@ -275,20 +409,49 @@ def start_video_processing(app, sid, stream_config):
             rgb_b64 = base64.b64encode(buffer_rgb).decode('utf-8')
             tir_b64 = base64.b64encode(buffer_tir).decode('utf-8')
             
-            socketio.emit('video_frame', {
+            # 시험 영상인 경우 현재 시간과 길이 정보 추가
+            frame_data = {
                 'rgb': rgb_b64,
                 'tir': tir_b64,
-                'camera_id': 'test_video' if is_test_video else video_source,
+                'camera_id': 'test_video' if is_test_video else camera_id_for_db,
                 'person_detected': is_person_detected
-            }, room=sid)
-            socketio.sleep(1 / FPS)
+            }
+            
+            if is_test_video:
+                current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+                total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                video_fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                if video_fps > 0:
+                    current_time = current_frame / video_fps
+                    total_duration = total_frames / video_fps
+                else:
+                    current_time = 0
+                    total_duration = 0
+                
+                frame_data.update({
+                    'current_time': current_time,
+                    'duration': total_duration,
+                    'current_frame': current_frame,
+                    'total_frames': total_frames
+                })
+            
+            socketio.emit('video_frame', frame_data, room=sid)
+            socketio.sleep(1 / adjusted_fps)
 
     # 5. 종료 처리 ---
-    cap.release()
+    if cap:
+        cap.release()
+        print(f"[정리] 카메라/비디오 캡처 해제 완료")
     if tir_cap:
         tir_cap.release()
+        print(f"[정리] TIR 비디오 캡처 해제 완료")
+    
+    # 시험 영상 제어 상태 정리
+    if is_test_video:
+        clear_test_video_control(sid)
     
     if is_live:
-        print(f"카메라 {video_source} 스트리밍 스레드 종료.")
+        print(f"[실시간] 카메라 {video_source} 스트리밍 스레드 종료 (클라이언트: {sid})")
     else:
-        print(f"시험 영상 분석 스레드 종료. (RGB: {os.path.basename(rgb_path)})")
+        print(f"[시험 영상] 분석 스레드 종료 (RGB: {os.path.basename(rgb_path)}, 클라이언트: {sid})")

@@ -55,15 +55,28 @@ export const subscribeToEvent = (eventName, callback) => {
   // 구독 해제 함수 반환
   return () => {
     console.log(`이벤트 구독 해제: ${eventName}`);
-    socket.off(eventName, callback);
+    if (socket && socket.off) {
+      try {
+        socket.off(eventName, callback);
+      } catch (error) {
+        console.error(`이벤트 구독 해제 오류 (${eventName}):`, error);
+      }
+    }
   };
 };
 
 export const unsubscribeFromEvent = (eventName, callback) => {
-  if (!socket) return;
+  if (!socket || !socket.off) {
+    console.warn('소켓이 초기화되지 않았거나 연결이 끊어진 상태입니다.');
+    return;
+  }
   
   console.log(`이벤트 구독 해제: ${eventName}`);
-  socket.off(eventName, callback);
+  try {
+    socket.off(eventName, callback);
+  } catch (error) {
+    console.error(`이벤트 구독 해제 오류 (${eventName}):`, error);
+  }
 };
 
 // 소켓 연결 상태 확인
