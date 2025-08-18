@@ -1,0 +1,38 @@
+INFO:app.sockets.events:클라이언트 연결됨: kJZMs7WwvmiuoyTpAAAC
+INFO:app.sockets.events:스트리밍 시작 요청: camera_id=0, model=yolo11n_early_fusion.pt, client=kJZMs7WwvmiuoyTpAAAC
+Traceback (most recent call last):
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\hub.py", line 476, in fire_timers
+    timer()
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\timer.py", line 59, in __call__
+    cb(*args, **kw)
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\greenthread.py", line 221, in main
+    result = function(*args, **kwargs)
+TypeError: start_video_processing() takes 3 positional arguments but 4 were given
+WARNING:app.sockets.events:카메라 1는 이미 스트리밍 중입니다: kJZMs7WwvmiuoyTpAAAC
+WARNING:app.sockets.events:카메라 1는 이미 스트리밍 중입니다: kJZMs7WwvmiuoyTpAAAC
+INFO:app.sockets.events:사용자 요청으로 카메라 1 스트리밍 중지: kJZMs7WwvmiuoyTpAAAC
+WARNING:app.sockets.events:중지할 스트리밍 작업이 없습니다: camera_id=0, client=kJZMs7WwvmiuoyTpAAAC    
+WARNING:app.sockets.events:중지할 스트리밍 작업이 없습니다: camera_id=0, client=kJZMs7WwvmiuoyTpAAAC
+INFO:app.sockets.events:스트리밍 시작 요청: camera_id=0, model=yolo11n_early_fusion.pt, client=kJZMs7WwvmiuoyTpAAAC
+WARNING:app.sockets.events:카메라 1는 이미 스트리밍 중입니다: kJZMs7WwvmiuoyTpAAAC
+Traceback (most recent call last):
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\hub.py", line 476, in fire_timers
+    timer()
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\timer.py", line 59, in __call__
+    cb(*args, **kw)
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\greenthread.py", line 221, in main
+    result = function(*args, **kwargs)
+TypeError: start_video_processing() takes 3 positional arguments but 4 were given
+WARNING:app.sockets.events:카메라 1는 이미 스트리밍 중입니다: kJZMs7WwvmiuoyTpAAAC
+INFO:app.sockets.events:사용자 요청으로 카메라 1 스트리밍 중지: kJZMs7WwvmiuoyTpAAAC
+WARNING:app.sockets.events:중지할 스트리밍 작업이 없습니다: camera_id=0, client=kJZMs7WwvmiuoyTpAAAC    
+INFO:app.sockets.events:스트리밍 시작 요청: camera_id=0, model=yolo11n_early_fusion.pt, client=kJZMs7WwvmiuoyTpAAAC
+WARNING:app.sockets.events:카메라 1는 이미 스트리밍 중입니다: kJZMs7WwvmiuoyTpAAAC
+Traceback (most recent call last):
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\hub.py", line 476, in fire_timers
+    timer()
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\hubs\timer.py", line 59, in __call__
+    cb(*args, **kw)
+  File "E:\anaconda\envs\bss\lib\site-packages\eventlet\greenthread.py", line 221, in main
+    result = function(*args, **kwargs)
+TypeError: start_video_processing() takes 3 positional arguments but 4 were given
