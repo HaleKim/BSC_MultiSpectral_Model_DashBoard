@@ -24,8 +24,23 @@ try:
 except ImportError:
     print("경고: 커스텀 모델 .py 파일을 찾을 수 없습니다. 모델 로딩에 실패할 수 있습니다.")
 
+def get_default_model_from_settings():
+    """settings.json에서 기본 모델 이름을 읽어오는 함수"""
+    try:
+        import json
+        # settings.json 경로를 정확하게 잡아줍니다.
+        settings_path = os.path.join(os.path.dirname(__file__), '..', '..', 'settings.json')
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                return settings.get('default_model', 'yolo11n_early_fusion.pt') # 파일이 있어도 키가 없으면 기본값
+    except Exception:
+        pass # 오류 발생 시 기본값 반환
+    return 'yolo11n_early_fusion.pt'
+
 # --- 전역 설정 ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', 'yolo11n_early_fusion.pt')
+DEFAULT_MODEL_NAME = get_default_model_from_settings()
+MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', DEFAULT_MODEL_NAME)
 MODEL_TYPE = 'early_fusion'
 RECORD_SECONDS = 10
 FPS = 20

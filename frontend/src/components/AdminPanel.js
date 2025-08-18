@@ -173,8 +173,8 @@ const AdminPanel = () => {
                         <input value={newFullName} onChange={e => setNewFullName(e.target.value)} className="w-full px-3 py-2 text-white bg-gray-600 border border-gray-500 rounded-lg" placeholder="이름" required />
                         <input value={newRank} onChange={e => setNewRank(e.target.value)} className="w-full px-3 py-2 text-white bg-gray-600 border border-gray-500 rounded-lg" placeholder="계급/직책" />
                         <select value={newRole} onChange={e => setNewRole(e.target.value)} className="w-full px-3 py-2 text-white bg-gray-600 border border-gray-500 rounded-lg">
-                            <option value="USER">USER</option>
-                            <option value="ADMIN">ADMIN</option>
+                            <option value="USER">user</option>
+                            <option value="ADMIN">admin</option>
                         </select>
                         <button type="submit" className="w-full px-4 py-2 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 col-span-2">추가</button>
                     </div>
