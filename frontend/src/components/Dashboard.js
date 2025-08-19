@@ -31,7 +31,7 @@ const Dashboard = () => {
   const handleOpenFullEvent = (event) => setFullViewEvent(event);
   const handleCloseFullEvent = () => setFullViewEvent(null);
 
-  const [isModeChanging, setIsModeChanging] = useState(false);
+  
   const [selectedLiveModel, setSelectedLiveModel] = useState(null);
   const [isModelReloading, setIsModelReloading] = useState(false);
 
@@ -75,7 +75,7 @@ const Dashboard = () => {
       });
       disconnectSocket();
     };
-  }, []); // handleVideoFrame 의존성 제거 (이제 재생성되지 않으므로)
+  }, [handleVideoFrame]);
 
   // 2. settings.json에서 기본 모델을 불러오는 useEffect
   useEffect(() => {
@@ -94,148 +94,76 @@ const Dashboard = () => {
     loadDefaultModel();
   }, []);
 
-  // 3. 페이지 location 변경 감지 (관리자 패널에서 메인 페이지로 돌아왔을 때)
+  // 스트림 및 모델 관리 통합 useEffect
   useEffect(() => {
-    console.log('페이지 location 변경 감지:', location.pathname);
-    
-    // 메인 페이지('/')로 돌아왔고 live 모드일 때 기본 모델 재로드
-    if (location.pathname === '/' && mode === 'live') {
-      console.log('메인 페이지 복귀 감지 - 기본 모델 강제 재로드');
-      
-      const forceReloadModel = async () => {
-        try {
-          setIsModelReloading(true); // 로딩 상태 시작
-          
-          const response = await getDefaultModel();
-          const defaultModel = response.data.default_model;
-          console.log('메인 페이지 복귀 시 기본 모델:', defaultModel);
-          console.log('현재 선택된 모델:', selectedLiveModel);
-          
-          // UI 깜빡임 없이 모델 업데이트
-          if (selectedLiveModel !== defaultModel) {
-            console.log(`모델 변경 감지: ${selectedLiveModel} -> ${defaultModel}`);
-            setSelectedLiveModel(defaultModel);
-          } else {
-            console.log('모델 동일 - 스트림 재시작을 위해 강제 업데이트');
-            // 임시로 null 설정하되 UI에는 로딩 상태로 표시
-            setSelectedLiveModel(null);
-            setTimeout(() => {
-              setSelectedLiveModel(defaultModel);
-              console.log('메인 페이지 복귀 시 모델 강제 업데이트 완료:', defaultModel);
-            }, 200);
-          }
-        } catch (error) {
-          console.error('메인 페이지 복귀 시 모델 재로드 실패:', error);
-        } finally {
-          // 로딩 상태 종료
-          setTimeout(() => setIsModelReloading(false), 500);
+    const stopStreams = () => {
+      cameraIds.forEach(id => {
+        if (isStreaming[id]) {
+          console.log(`[Effect] 카메라 ${id} 스트림 중지 요청`);
+          sendEvent('stop_stream', { camera_id: id });
+          setIsStreaming(prev => ({ ...prev, [id]: false }));
         }
-      };
-      
-      // 약간의 지연을 두어 페이지 전환이 완전히 완료된 후 실행
-      setTimeout(forceReloadModel, 300);
-    }
-  }, [location.pathname, mode, selectedLiveModel]);
+      });
+    };
 
-  // 4. live 모드로 변경될 때마다 기본 모델 다시 로드 (기존 로직 유지)
-  useEffect(() => {
-    if (mode === 'live') {
-      console.log('Live 모드 진입 감지, 현재 selectedLiveModel:', selectedLiveModel);
-      
-      const reloadDefaultModel = async () => {
-        try {
-          console.log('Live 모드 진입 - 기본 모델 다시 로드 시도');
-          const response = await getDefaultModel();
-          const defaultModel = response.data.default_model;
-          console.log('서버에서 받은 기본 모델:', defaultModel);
-          
-          if (selectedLiveModel !== defaultModel) {
-            console.log(`기본 모델 변경 감지: ${selectedLiveModel} -> ${defaultModel}`);
-            setSelectedLiveModel(defaultModel);
-          } else {
-            console.log('기본 모델 변경 없음, 현재 모델 유지:', selectedLiveModel);
-            // 모델은 같지만 스트림이 시작되지 않은 경우를 위해 강제로 상태 업데이트
-            // UI 깜빡임 방지를 위해 로딩 상태 사용
-            setIsModelReloading(true);
-            setSelectedLiveModel(null);
-            setTimeout(() => {
-              setSelectedLiveModel(defaultModel);
-              setIsModelReloading(false);
-            }, 50);
-          }
-        } catch (error) {
-          console.error('Live 모드 기본 모델 재로드 실패:', error);
-        }
-      };
-      
-      // 약간의 지연을 두어 모드 변경이 완전히 완료된 후 실행
-      setTimeout(reloadDefaultModel, 100);
-    }
-  }, [mode]);
+    const startStreams = (modelToUse) => {
+      if (!modelToUse) {
+        console.log('[Effect] 스트림 시작 보류: 모델이 없습니다.');
+        return;
+      }
+      console.log(`[Effect] 스트림 시작 로직 진입 (모델: ${modelToUse})`);
+      cameraIds.forEach(id => {
+        console.log(`[Effect] 카메라 ${id} 스트림 시작 요청`);
+        sendEvent('start_stream', { 
+          camera_id: id,
+          model: isAdmin ? modelToUse : undefined,
+          user_id: user ? user.id : null
+        });
+        setIsStreaming(prev => ({ ...prev, [id]: true }));
+      });
+    };
 
-  // 스트림 시작/중지 함수
-  const startAllStreams = useCallback(async () => {
-    if (!selectedLiveModel) {
-      console.log('기본 모델 로딩 대기 중...');
+    // Live 모드가 아니면 항상 스트림 중지
+    if (mode !== 'live') {
+      stopStreams();
       return;
     }
-    
-    console.log('=== 실시간 스트림 시작 시도 ===');
-    console.log('선택된 모델:', selectedLiveModel);
-    console.log('관리자 권한:', isAdmin);
-    console.log('카메라 IDs:', cameraIds);
-    
-    for (const id of cameraIds) {
-      console.log(`카메라 ${id} 스트림 시작 요청 (모델: ${selectedLiveModel})`);
-      sendEvent('start_stream', { 
-        camera_id: id,
-        model: isAdmin ? selectedLiveModel : undefined
-      });
-      setIsStreaming(prev => ({ ...prev, [id]: true }));
-    }
-    console.log('=== 스트림 시작 요청 완료 ===');
-  }, [cameraIds, isAdmin, selectedLiveModel]);
 
-  const stopAllStreams = useCallback(() => {
-    console.log('모든 스트림 중지 요청...');
-    cameraIds.forEach(id => {
-        sendEvent('stop_stream', { camera_id: id });
-    });
-    const resetStreamingState = {};
-    const resetFramesState = {};
-    cameraIds.forEach(id => {
-      resetStreamingState[id] = false;
-      resetFramesState[id] = { rgb: null, tir: null };
-    });
-    setIsStreaming(resetStreamingState);
-    setLiveFrames(resetFramesState);
-  }, [cameraIds]);
+    // Live 모드일 때의 로직
+    // 메인 대시보드 경로로 처음 진입했거나 다시 돌아왔을 때
+    if (location.pathname === '/') {
+      console.log('[Effect] 메인 대시보드 경로 감지. 모델 재로드 및 스트림 재시작');
+      setIsModelReloading(true);
+      stopStreams(); // 기존 스트림 확실히 중지
 
-  // 5. 모델 로드 완료 후 실시간 스트림 시작
-  useEffect(() => {
-    console.log('=== 모델/모드 변경 감지 ===');
-    console.log('selectedLiveModel:', selectedLiveModel);
-    console.log('mode:', mode);
-    console.log('isAdmin:', isAdmin);
-    
-    if (selectedLiveModel && mode === 'live') {
-      console.log('조건 충족: 실시간 스트림 시작 준비');
-      startAllStreams();
-    } else {
-      console.log('조건 미충족: 스트림 시작 안함');
-      if (!selectedLiveModel) console.log('- 모델이 로드되지 않음');
-      if (mode !== 'live') console.log('- 라이브 모드가 아님');
+      getDefaultModel()
+        .then(response => {
+          const newModel = response.data.default_model;
+          console.log(`[Effect] 새로 로드된 모델: ${newModel}`);
+          setSelectedLiveModel(newModel);
+          startStreams(newModel); // 새 모델로 스트림 시작
+        })
+        .catch(error => {
+          console.error('[Effect] 기본 모델 재로드 실패:', error);
+          const fallbackModel = 'yolo11n_early_fusion.pt';
+          setSelectedLiveModel(fallbackModel);
+          startStreams(fallbackModel); // 폴백 모델로 스트림 시작
+        })
+        .finally(() => {
+          setIsModelReloading(false);
+        });
+    } 
+    // 의존성 배열의 다른 요소 변경으로 인한 재실행 (예: user, isAdmin)
+    else {
+        startStreams(selectedLiveModel);
     }
-  }, [selectedLiveModel, mode, startAllStreams]);
 
-  // 6. 모드 변경 시 스트림을 제어하는 useEffect
-  useEffect(() => {
-    if (mode === 'test') {
-      console.log('>> Test Mode: 스트림 중지');
-      stopAllStreams();
-    }
-    // live 모드로 변경 시는 위의 useEffect(selectedLiveModel 의존성)에서 처리
-  }, [mode, stopAllStreams]);
+    // 이 Effect는 컴포넌트가 unmount될 때 스트림을 중지해야 합니다.
+    return () => {
+        console.log('[Effect Cleanup] 스트림 중지');
+        stopStreams();
+    };
+  }, [mode, location.pathname, user, isAdmin]); // cameraIds, isStreaming 제거
 
   // 알람음
   useEffect(() => {
@@ -246,7 +174,6 @@ const Dashboard = () => {
 
   // 모드 변경 핸들러
   const handleModeChange = (newMode) => {
-    if (isModeChanging) return;
     if (newMode === 'test' && !isAdmin) {
       alert('테스트 영상 분석 기능은 관리자만 사용할 수 있습니다.');
       return;
@@ -259,22 +186,20 @@ const Dashboard = () => {
       <div className="flex justify-center space-x-4 mb-4">
         <button
           onClick={() => handleModeChange('live')}
-          disabled={isModeChanging}
           className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
             mode === 'live' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
-          } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+          }`}
         >
-          {isModeChanging && mode === 'live' ? '전환 중...' : '실시간 다중 감시'}
+          실시간 다중 감시
         </button>
         {isAdmin && (
           <button
             onClick={() => handleModeChange('test')}
-            disabled={isModeChanging}
             className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
               mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
-            } ${isModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+            }`}
           >
-            {isModeChanging && mode === 'test' ? '전환 중...' : '시험 영상 분석 (관리자)'}
+            시험 영상 분석 (관리자)
           </button>
         )}
       </div>

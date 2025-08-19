@@ -1,5 +1,5 @@
 // src/context/AuthContext.js
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, getProfile } from '../services/api';
 import jwt_decode from 'jwt-decode';
 
@@ -9,16 +9,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      verifyUser(token);
-    } else {
-      setLoading(false);
-    }
+  const logout = useCallback(() => {
+    localStorage.removeItem('accessToken');
+    setUser(null);
   }, []);
 
-  const verifyUser = async (token) => {
+  const verifyUser = useCallback(async (token) => {
     try {
       const decoded = jwt_decode(token);
       if (decoded.exp * 1000 < Date.now()) {
@@ -33,7 +29,16 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [logout]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      verifyUser(token);
+    } else {
+      setLoading(false);
+    }
+  }, [verifyUser]);
 
   const login = async (username, password) => {
     try {
@@ -47,11 +52,6 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       throw error;
     }
-  };
-
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    setUser(null);
   };
 
   return (

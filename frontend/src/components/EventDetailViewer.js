@@ -21,7 +21,7 @@ const EventIcon = ({ type, size = 'w-16 h-16' }) => {
 };
 
 const ConfidenceGauge = ({ value }) => {
-    const percent = parseFloat(value) || 0;
+    const percent = (parseFloat(value) || 0) * 100;
     let bgColor = 'bg-gray-500';
     if (percent >= 90) bgColor = 'bg-red-600';
     else if (percent >= 80) bgColor = 'bg-green-500';
@@ -56,13 +56,13 @@ const EventDetailViewer = ({ event, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="relative w-full max-w-lg bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+      <div className="relative w-full max-w-lg h-[80vh] flex flex-col bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-700">
             <h2 className="text-xl font-semibold text-cyan-400 capitalize">{event.detected_object} 탐지 상세 정보</h2>
             <button onClick={onClose} className="text-gray-400 text-3xl font-bold hover:text-white">&times;</button>
         </div>
         
-        <div className="p-6 space-y-4">
+        <div className="flex-grow p-6 space-y-4 overflow-y-auto">
             <div className="flex items-center space-x-4">
                 <EventIcon type={event.detected_object} />
                 <div>
@@ -80,14 +80,23 @@ const EventDetailViewer = ({ event, onClose }) => {
             </div>
 
             {event.video_path_rgb && (
-                <a 
-                    href={`${videoBaseUrl}/${event.video_path_rgb}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-full text-center mt-6 px-4 py-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors"
-                >
-                    녹화 영상 확인
-                </a>
+                <div className="mt-4 flex-grow flex flex-col">
+                    <p className="mb-2 flex-shrink-0"><strong>녹화 영상:</strong></p>
+                    <div className="flex-grow h-5/6">
+                        <video 
+                            key={event.video_path_rgb} // 영상 소스가 바뀔 때마다 리렌더링
+                            className="w-full h-full rounded-lg bg-black"
+                            controls 
+                            autoPlay
+                            muted
+                            loop
+                            onError={(e) => console.error('Video Error:', e.target.error)}
+                        >
+                            <source src={`${videoBaseUrl}/${event.video_path_rgb}`} type="video/mp4" />
+                            브라우저가 비디오 태그를 지원하지 않습니다.
+                        </video>
+                    </div>
+                </div>
             )}
         </div>
       </div>

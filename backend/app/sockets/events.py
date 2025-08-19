@@ -76,12 +76,15 @@ def handle_start_stream(data):
             logger.error(f"Failed to load default model, falling back. Error: {e}")
             model_name = 'yolo11n_early_fusion.pt'
 
+    user_id = data.get('user_id')
+
     logger.info(f"[실시간 스트림 시작 요청] camera_id={camera_id}, model={model_name}, client={client_sid}")
 
     # 일관된 stream_config 생성
     stream_config = {
         'camera_id': camera_id,
         'model': model_name,
+        'user_id': user_id,
         'is_live_stream': True,
         'is_multi_spectral': 'fusion' in model_name # 모델 이름에 'fusion'이 있으면 다중 스펙트럼으로 간주
     }

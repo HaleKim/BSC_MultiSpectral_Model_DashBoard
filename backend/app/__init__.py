@@ -26,7 +26,7 @@ def create_app(config_name):
     ]
     
     # CORS 설정: 정의된 목록에 대해서만 API 요청을 허용합니다.
-    cors.init_app(app, resources={r"/api/*": {"origins": allowed_origins}})
+    cors.init_app(app, resources={r"/api/*": {"origins": allowed_origins}, r"/event_recordings/*": {"origins": allowed_origins}})
     # SocketIO 설정: 정의된 목록에 대해서만 소켓 연결을 허용합니다.
     socketio.init_app(app, cors_allowed_origins=allowed_origins)
     
@@ -39,6 +39,15 @@ def create_app(config_name):
     
     # WebSocket 이벤트 핸들러 등록
     from .sockets import events
+
+    # 녹화 영상 서빙을 위한 정적 파일 라우트
+    from flask import send_from_directory
+    from .services.video_service import RECORDINGS_FOLDER
+
+    @app.route(f'/{RECORDINGS_FOLDER}/<path:filename>')
+    def serve_recording(filename):
+        recordings_dir = os.path.join(app.root_path, '..', RECORDINGS_FOLDER)
+        return send_from_directory(recordings_dir, filename)
 
     # 데이터베이스 테이블 생성
     # with app.app_context():

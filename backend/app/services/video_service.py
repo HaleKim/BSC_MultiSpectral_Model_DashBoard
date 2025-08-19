@@ -195,6 +195,7 @@ def start_video_processing(app, sid, stream_config):
     is_live = stream_config.get('is_live_stream', False)
     is_test_video = not is_live
     model_name = stream_config.get('model')
+    user_id = stream_config.get('user_id')
     
     # 소스 결정
     if is_live:
@@ -354,7 +355,7 @@ def start_video_processing(app, sid, stream_config):
             if current_model:
                 frame_tir_gray_reshaped = np.expand_dims(frame_tir_gray, axis=-1)
                 input_data = np.concatenate((frame_rgb, frame_tir_gray_reshaped), axis=-1)
-                results = current_model(input_data, verbose=False)
+                results = current_model.track(input_data, verbose=False, persist=True)
                 
                 annotated_frame_rgb = draw_detections_on_frame(frame_rgb, results, BBOX_DISPLAY_THRESHOLD)
                 annotated_frame_tir = draw_detections_on_frame(annotated_frame_tir, results, BBOX_DISPLAY_THRESHOLD)
@@ -384,7 +385,7 @@ def start_video_processing(app, sid, stream_config):
                                     print(f"경고: DB에서 카메라 ID {int(camera_id_for_db)}을 찾을 수 없습니다.")
                                     continue
 
-                                new_event = DetectionEvent(camera_id=camera.id, detected_object=detected_object_type, confidence=confidence)
+                                new_event = DetectionEvent(camera_id=camera.id, detected_object=detected_object_type, confidence=confidence, user_id_on_duty=user_id)
                                 db.session.add(new_event)
                                 db.session.commit()
                                 

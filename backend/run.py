@@ -19,7 +19,48 @@ from app.services.video_service import RECORDINGS_FOLDER # <-- 설정값 임포�
 # 개발 환경 설정으로 어플리케이션 인스턴스 생성
 app = create_app(os.getenv('FLASK_ENV') or 'development')
 
+# --- Graceful Shutdown ---
+from app.sockets.events import video_tasks
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    print('\nCtrl+C가 감지되었습니다. 서버를 종료합니다...')
+    
+    # 모든 활성 비디오 처리 스레드 종료
+    tasks_to_kill = []
+    for sid in list(video_tasks.keys()):
+        if sid in video_tasks:
+            for camera_id in list(video_tasks[sid].keys()):
+                if camera_id in video_tasks[sid]:
+                    task = video_tasks[sid].pop(camera_id)
+                    tasks_to_kill.append((task, sid, camera_id))
+
+    if not tasks_to_kill:
+        print("  - 종료할 백그라운드 작업이 없습니다.")
+    else:
+        print(f"총 {len(tasks_to_kill)}개의 백그라운드 작업을 종료합니다...")
+        for task, sid, camera_id in tasks_to_kill:
+            print(f"  - 클라이언트 {sid}의 카메라 {camera_id} 작업 종료 중...")
+            try:
+                task.kill()
+            except Exception as e:
+                print(f"    - 작업 종료 중 오류 발생: {e}")
+
+    print("모든 백그라운드 작업이 정리되었습니다.")
+    
+    # 소켓 서버 정상 종료 (eventlet/gevent 사용 시 필요)
+    # 이 함수는 socketio.run() 루프를 중단시킵니다.
+    socketio.stop() 
+    
+    print("Socket.IO 서버가 중지되었습니다. 프로세스를 종료합니다.")
+    # sys.exit(0) # socketio.stop()이 루프를 빠져나오게 하므로, 스크립트는 자연스럽게 종료됩니다.
+
+signal.signal(signal.SIGINT, signal_handler)
+
+
 if __name__ == '__main__':
+
     # --- 서버 시작 시 녹화 폴더 생성 ---
     recordings_dir = os.path.join(os.path.dirname(__file__), RECORDINGS_FOLDER)
     if not os.path.exists(recordings_dir):
