@@ -1,6 +1,7 @@
 # /backend/app/config.py
 import os
 from datetime import timedelta
+from pathlib import Path
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'default-fallback-key')
@@ -24,6 +25,10 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+
+BASE_DIR = Path(__file__).resolve().parents[1]  # backend/
+RECORD_DIR = Path(os.getenv("RECORD_DIR", BASE_DIR / "event_recordings"))
+RECORD_DIR.mkdir(parents=True, exist_ok=True)
 
 config = {
     'development': DevelopmentConfig,

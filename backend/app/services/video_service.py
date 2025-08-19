@@ -10,6 +10,7 @@ import threading
 from collections import deque
 from datetime import datetime
 import json
+from ..config import RECORD_DIR
 
 # Flask 관련 임포트
 from flask import current_app
@@ -17,17 +18,28 @@ from ..extensions import socketio, db
 from ..models.db_models import DetectionEvent, EventFile, Camera
 
 # AI 관련 임포트는 마지막에
-from ultralytics import YOLO
-from ultralytics.nn.modules import conv
+# === Ultralytics/Torch 지연 임포트 ===
+try:
+    from ultralytics import YOLO
+    from ultralytics.nn.modules import conv
+except Exception:
+    YOLO = None
+    conv = None
 
+
+# --- 커스텀 AI 모델 클래스 등록 ---
 # --- 커스텀 AI 모델 클래스 등록 ---
 try:
     from .custom_classes import Silence, SilenceChannel
-    conv.Silence = Silence
-    conv.SilenceChannel = SilenceChannel
-    print("INFO: 커스텀 AI 모델 클래스가 성공적으로 등록되었습니다.")
+    if conv is not None:
+        conv.Silence = Silence
+        conv.SilenceChannel = SilenceChannel
+        print("INFO: 커스텀 AI 모델 클래스가 성공적으로 등록되었습니다.")
+    else:
+        print("INFO: Ultralytics가 없어 커스텀 클래스를 아직 주입하지 않았습니다(서버는 계속 실행).")
 except ImportError:
     print("경고: 커스텀 모델 .py 파일을 찾을 수 없습니다. 모델 로딩에 실패할 수 있습니다.")
+
 
 def get_default_model_from_settings():
     """settings.json에서 기본 모델 이름을 읽어오는 함수"""
@@ -49,7 +61,7 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', DE
 MODEL_TYPE = 'early_fusion'
 RECORD_SECONDS = 10
 FPS = 20
-RECORDINGS_FOLDER = "event_recordings"
+# RECORDINGS_FOLDER = "event_recordings" <- 제거
 
 # --- 시험 영상 제어용 전역 변수 ---
 test_video_controls = {}  # 클라이언트별 비디오 제어 상태 저장
@@ -109,6 +121,9 @@ BBOX_DISPLAY_THRESHOLD = 0.7       # BBox 표시 임계값: 70%
 # --- AI 모델 로드 ---
 def load_model(model_name='yolo11n_early_fusion.pt'):
     """동적으로 모델을 로드하는 함수"""
+    if YOLO is None:
+        print("INFO: Ultralytics가 설치되어 있지 않습니다. 모델 로드를 건너뜁니다.")
+        return None
     model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', model_name)
     try:
         loaded_model = YOLO(model_path)
@@ -118,13 +133,19 @@ def load_model(model_name='yolo11n_early_fusion.pt'):
         print(f"모델 로드 실패: {e}")
         return None
 
-# 기본 모델 로드
-try:
-    model = YOLO(MODEL_PATH)
-    print(f"'{MODEL_PATH}' 기본 모델 로드 성공.")
-except Exception as e:
-    model = None
-    print(f"기본 모델 로드 실패: {e}")
+
+# 기본 모델 로드 (Ultralytics 없으면 건너뜀)
+model = None
+if YOLO is not None:
+    try:
+        model = YOLO(MODEL_PATH)
+        print(f"'{MODEL_PATH}' 기본 모델 로드 성공.")
+    except Exception as e:
+        model = None
+        print(f"기본 모델 로드 실패: {e}")
+else:
+    print("INFO: Ultralytics 미설치 상태. 기본 모델은 로드하지 않습니다(서버는 계속 실행).")
+
 
 
 def transform_rgb_to_tir(frame_rgb):
@@ -390,8 +411,9 @@ def start_video_processing(app, sid, stream_config):
                                 
                                 timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                                 filename = f"event_{timestamp_str}_cam{camera_id_for_db}.mp4"
-                                recordings_base_path = os.path.join(app.root_path, '..', RECORDINGS_FOLDER)
-                                file_path = os.path.join(recordings_base_path, filename)
+                                # recordings_base_path = os.path.join(app.root_path, '..', RECORDINGS_FOLDER)
+                                # file_path = os.path.join(recordings_base_path, filename)
+                                file_path = str(RECORD_DIR / filename)
 
                                 new_event_file = EventFile(event_id=new_event.id, file_type='video_rgb', file_path=filename)
                                 db.session.add(new_event_file)
