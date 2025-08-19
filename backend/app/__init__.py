@@ -47,6 +47,17 @@ def create_app(config_name):
     @app.route(f'/{RECORDINGS_FOLDER}/<path:filename>')
     def serve_recording(filename):
         recordings_dir = os.path.join(app.root_path, '..', RECORDINGS_FOLDER)
+        file_path = os.path.join(recordings_dir, filename)
+        print(f"=== Static File Request ===")
+        print(f"Requested filename: {filename}")
+        print(f"Recordings directory: {recordings_dir}")
+        print(f"Full file path: {file_path}")
+        print(f"File exists: {os.path.exists(file_path)}")
+        if os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
+            print(f"File size: {file_size} bytes")
+            print(f"File size (KB): {file_size / 1024:.2f} KB")
+        print(f"==========================")
         return send_from_directory(recordings_dir, filename)
 
     # 데이터베이스 테이블 생성

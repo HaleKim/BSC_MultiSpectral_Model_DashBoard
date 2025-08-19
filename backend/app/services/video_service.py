@@ -134,15 +134,41 @@ def transform_rgb_to_tir(frame_rgb):
     return gray
 
 def save_video_clip(buffer, file_path, fps):
-    if not buffer: return
+    print(f"[녹화 시작] 버퍼 크기: {len(buffer)} 프레임")
+    if not buffer: 
+        print("[녹화 실패] 버퍼가 비어있습니다.")
+        return
+    
     recordings_dir = os.path.dirname(file_path)
-    if not os.path.exists(recordings_dir): os.makedirs(recordings_dir)
+    if not os.path.exists(recordings_dir): 
+        os.makedirs(recordings_dir)
+        print(f"[녹화] 디렉토리 생성: {recordings_dir}")
+    
     height, width, _ = buffer[0].shape
+    print(f"[녹화] 프레임 크기: {width}x{height}, FPS: {fps}")
+    
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
-    for frame in list(buffer): writer.write(frame)
+    
+    if not writer.isOpened():
+        print(f"[녹화 실패] VideoWriter를 열 수 없습니다: {file_path}")
+        return
+    
+    frame_count = 0
+    for frame in list(buffer): 
+        writer.write(frame)
+        frame_count += 1
+    
     writer.release()
-    print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {file_path}")
+    
+    # 파일 크기 확인
+    if os.path.exists(file_path):
+        file_size = os.path.getsize(file_path)
+        print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {file_path}")
+        print(f"[녹화 완료] 파일 크기: {file_size} bytes ({file_size/1024:.2f} KB)")
+        print(f"[녹화 완료] 저장된 프레임 수: {frame_count}")
+    else:
+        print(f"[녹화 실패] 파일이 생성되지 않았습니다: {file_path}")
 
 def draw_detections_on_frame(frame, results, confidence_threshold=BBOX_DISPLAY_THRESHOLD):
     """confidence 임계값 이상인 탐지 결과만 프레임에 그리기"""
