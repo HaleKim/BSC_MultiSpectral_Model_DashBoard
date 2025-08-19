@@ -1,6 +1,7 @@
 // src/context/AuthContext.js
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, getProfile } from '../services/api';
+import { disconnectSocket } from '../services/socket';
 import jwt_decode from 'jwt-decode';
 
 const AuthContext = createContext();
@@ -10,6 +11,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
+    // 로그아웃 시 소켓 연결 해제 (토큰 제거 전에 실행)
+    disconnectSocket();
     localStorage.removeItem('accessToken');
     setUser(null);
   }, []);

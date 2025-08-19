@@ -2,9 +2,26 @@
 import { io } from 'socket.io-client';
 
 let socket;
+let isInitialized = false;
 
 export const initSocket = () => {
-  if (socket) return socket;
+  // 이미 초기화되었고 연결된 상태라면 기존 소켓 반환
+  if (socket && socket.connected) {
+    return socket;
+  }
+  
+  // 기존 소켓이 있지만 연결이 끊어진 상태라면 정리
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  
+  // 사용자 토큰 확인
+  const token = localStorage.getItem('accessToken');
+  if (!token) {
+    console.log('Socket.IO 초기화 건너뜀: 사용자 토큰이 없습니다.');
+    return null;
+  }
   
   // 환경변수가 없으면 기본값 사용
   const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -12,15 +29,27 @@ export const initSocket = () => {
 
   socket.on('connect', () => {
     console.log('Socket.IO 서버에 연결되었습니다. ID:', socket.id);
+    isInitialized = true;
+    
+    // 연결 시 사용자 토큰 재확인
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      console.log('Socket.IO 연결 후 토큰 확인 실패. 연결 해제.');
+      socket.disconnect();
+      return;
+    }
   });
 
   socket.on('disconnect', () => {
     console.log('Socket.IO 서버 연결이 끊어졌습니다.');
     socket = null;
+    isInitialized = false;
   });
 
   socket.on('connect_error', (error) => {
     console.error('Socket.IO 연결 오류:', error);
+    socket = null;
+    isInitialized = false;
   });
 
   return socket;
@@ -31,10 +60,18 @@ export const disconnectSocket = () => {
     console.log('Socket.IO 연결 해제 중...');
     socket.disconnect();
     socket = null;
+    isInitialized = false;
   }
 };
 
 export const sendEvent = (eventName, data) => {
+  // 사용자 토큰 확인
+  const token = localStorage.getItem('accessToken');
+  if (!token) {
+    console.warn('소켓 이벤트 전송 실패: 사용자 토큰이 없습니다.', eventName);
+    return;
+  }
+  
   if (socket && socket.connected) {
     console.log(`소켓 이벤트 전송: ${eventName}`, data);
     socket.emit(eventName, data);
@@ -49,15 +86,31 @@ export const subscribeToEvent = (eventName, callback) => {
     return null;
   }
 
+  // 안전한 콜백 래퍼 생성
+  const safeCallback = (data) => {
+    // 사용자 토큰 확인
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      console.log(`이벤트 핸들러 안전 처리: ${eventName} - 사용자 토큰이 없어 처리 건너뜀`);
+      return;
+    }
+    
+    try {
+      callback(data);
+    } catch (error) {
+      console.error(`이벤트 핸들러 오류 (${eventName}):`, error);
+    }
+  };
+
   console.log(`이벤트 구독: ${eventName}`);
-  socket.on(eventName, callback);
+  socket.on(eventName, safeCallback);
 
   // 구독 해제 함수 반환
   return () => {
     console.log(`이벤트 구독 해제: ${eventName}`);
     if (socket && socket.off) {
       try {
-        socket.off(eventName, callback);
+        socket.off(eventName, safeCallback);
       } catch (error) {
         console.error(`이벤트 구독 해제 오류 (${eventName}):`, error);
       }

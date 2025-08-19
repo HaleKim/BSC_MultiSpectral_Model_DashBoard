@@ -48,7 +48,7 @@ DEFAULT_MODEL_NAME = get_default_model_from_settings()
 MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', DEFAULT_MODEL_NAME)
 MODEL_TYPE = 'early_fusion'
 RECORD_SECONDS = 10
-FPS = 20
+FPS = 40
 RECORDINGS_FOLDER = "event_recordings"
 
 # --- 시험 영상 제어용 전역 변수 ---
@@ -314,7 +314,7 @@ def start_video_processing(app, sid, stream_config):
                 
                 # 재생 속도 적용 (FPS 조정)
                 playback_rate = control_state.get('playback_rate', 1.0)
-                base_fps = max(FPS, 20)  # 기본 FPS
+                base_fps = max(FPS, 60)  # 기본 FPS
                 adjusted_fps = base_fps * playback_rate
                 
                 # 배속 변경 시 로깅 (1회만)
@@ -441,18 +441,27 @@ def start_video_processing(app, sid, stream_config):
             socketio.sleep(1 / adjusted_fps)
 
     # 5. 종료 처리 ---
-    if cap:
-        cap.release()
-        print(f"[정리] 카메라/비디오 캡처 해제 완료")
-    if tir_cap:
-        tir_cap.release()
-        print(f"[정리] TIR 비디오 캡처 해제 완료")
-    
-    # 시험 영상 제어 상태 정리
-    if is_test_video:
-        clear_test_video_control(sid)
-    
-    if is_live:
-        print(f"[실시간] 카메라 {video_source} 스트리밍 스레드 종료 (클라이언트: {sid})")
-    else:
-        print(f"[시험 영상] 분석 스레드 종료 (RGB: {os.path.basename(rgb_path)}, 클라이언트: {sid})")
+    try:
+        if cap:
+            cap.release()
+            print(f"[정리] 카메라/비디오 캡처 해제 완료")
+        if tir_cap:
+            tir_cap.release()
+            print(f"[정리] TIR 비디오 캡처 해제 완료")
+        
+        # 시험 영상 제어 상태 정리
+        if is_test_video:
+            clear_test_video_control(sid)
+        
+        if is_live:
+            print(f"[실시간] 카메라 {video_source} 스트리밍 스레드 종료 (클라이언트: {sid})")
+        else:
+            print(f"[시험 영상] 분석 스레드 종료 (RGB: {os.path.basename(rgb_path)}, 클라이언트: {sid})")
+    except Exception as e:
+        print(f"[정리] 스레드 종료 중 오류 발생: {e}")
+    finally:
+        # 강제로 모든 OpenCV 창 닫기 (Windows에서 필요할 수 있음)
+        try:
+            cv2.destroyAllWindows()
+        except:
+            pass

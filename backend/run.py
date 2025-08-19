@@ -54,7 +54,15 @@ def signal_handler(sig, frame):
     socketio.stop() 
     
     print("Socket.IO 서버가 중지되었습니다. 프로세스를 종료합니다.")
-    # sys.exit(0) # socketio.stop()이 루프를 빠져나오게 하므로, 스크립트는 자연스럽게 종료됩니다.
+    
+    # eventlet 이벤트 루프 강제 종료
+    try:
+        import eventlet
+        eventlet.kill(eventlet.getcurrent(), SystemExit)
+    except:
+        pass
+    
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 

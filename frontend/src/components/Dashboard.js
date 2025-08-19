@@ -55,8 +55,27 @@ const Dashboard = () => {
 
   // 1. 소켓 연결 및 이벤트 핸들러 등록 전용 useEffect
   useEffect(() => {
+    // 사용자가 로그인하지 않은 경우 소켓 연결하지 않음
+    if (!user || !user.id) {
+      console.log('Dashboard: 사용자가 로그인하지 않음. 소켓 연결 건너뜀');
+      return;
+    }
+
+    // 토큰 재확인
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      console.log('Dashboard: 토큰이 없어 소켓 연결 건너뜀');
+      return;
+    }
+
     console.log('Dashboard 마운트: 소켓 초기화 및 이벤트 구독');
-    initSocket();
+    const socket = initSocket();
+    
+    // 소켓 초기화가 실패한 경우 (토큰이 없거나 연결 실패)
+    if (!socket) {
+      console.log('Dashboard: 소켓 초기화 실패');
+      return;
+    }
 
     const handleResponse = (data) => {
       console.log('서버 응답:', data);
@@ -75,7 +94,7 @@ const Dashboard = () => {
       });
       disconnectSocket();
     };
-  }, [handleVideoFrame]);
+  }, [handleVideoFrame, user]);
 
   // 2. settings.json에서 기본 모델을 불러오는 useEffect
   useEffect(() => {
@@ -111,13 +130,17 @@ const Dashboard = () => {
         console.log('[Effect] 스트림 시작 보류: 모델이 없습니다.');
         return;
       }
+      if (!user || !user.id) {
+        console.log('[Effect] 스트림 시작 보류: 사용자 정보가 없습니다.');
+        return;
+      }
       console.log(`[Effect] 스트림 시작 로직 진입 (모델: ${modelToUse})`);
       cameraIds.forEach(id => {
         console.log(`[Effect] 카메라 ${id} 스트림 시작 요청`);
         sendEvent('start_stream', { 
           camera_id: id,
           model: isAdmin ? modelToUse : undefined,
-          user_id: user ? user.id : null
+          user_id: user.id
         });
         setIsStreaming(prev => ({ ...prev, [id]: true }));
       });

@@ -165,6 +165,18 @@ def serve_test_video(filename):
         print(f"테스트 영상 서빙 중 오류 발생: {e}")
         return jsonify({"error": "Video not found"}), 404
 
+# --- 이벤트 녹화 영상 서빙 API ---
+@api_bp.route('/event_recordings/<filename>', methods=['GET'])
+@jwt_required()
+def serve_event_recording(filename):
+    """이벤트 녹화 영상 파일을 서빙합니다."""
+    try:
+        recordings_path = os.path.join(current_app.root_path, '..', 'event_recordings')
+        return send_from_directory(recordings_path, filename)
+    except Exception as e:
+        print(f"이벤트 녹화 영상 서빙 중 오류 발생: {e}")
+        return jsonify({"error": "Video not found"}), 404
+
 # --- AI 모델 목록 반환 API ---
 @api_bp.route('/models', methods=['GET'])
 @jwt_required()

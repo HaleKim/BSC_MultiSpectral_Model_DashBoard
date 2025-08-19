@@ -38,7 +38,7 @@ const ConfidenceGauge = ({ value }) => {
 
 
 const EventDetailViewer = ({ event, onClose }) => {
-  const videoBaseUrl = `${process.env.REACT_APP_API_URL}/event_recordings`;
+  const videoBaseUrl = `${process.env.REACT_APP_API_URL.replace('/api', '')}/event_recordings`;
 
   useEffect(() => {
     const handleEscKey = (e) => {
@@ -51,6 +51,8 @@ const EventDetailViewer = ({ event, onClose }) => {
       window.removeEventListener('keydown', handleEscKey);
     };
   }, [onClose]);
+
+
 
   if (!event) return null;
 
