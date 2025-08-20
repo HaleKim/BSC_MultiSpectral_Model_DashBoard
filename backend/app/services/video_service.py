@@ -47,12 +47,17 @@ def get_default_model_from_settings():
 DEFAULT_MODEL_NAME = get_default_model_from_settings()
 MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', DEFAULT_MODEL_NAME)
 MODEL_TYPE = 'early_fusion'
-RECORD_SECONDS = 10
+RECORD_SECONDS = 10  # 이벤트 전 버퍼 시간
+RECORD_SECONDS_AFTER = 10  # 이벤트 후 녹화 시간
 FPS = 40
 RECORDINGS_FOLDER = "event_recordings"
 
 # --- 시험 영상 제어용 전역 변수 ---
 test_video_controls = {}  # 클라이언트별 비디오 제어 상태 저장
+
+# --- 서버 종료 제어용 전역 변수 ---
+shutdown_flag = False  # 서버 종료 시그널 플래그
+active_video_sessions = {}  # 활성 비디오 세션 추적 {sid: True}
 
 def set_test_video_control(sid, action, **kwargs):
     """시험 영상 제어 상태 설정"""
@@ -101,10 +106,31 @@ def clear_test_video_control(sid):
         del test_video_controls[sid]
         print(f"[비디오 제어] 클라이언트 {sid} 제어 상태 정리 완료")
 
+def set_shutdown_flag():
+    """서버 종료 플래그 설정"""
+    global shutdown_flag
+    shutdown_flag = True
+    print("[종료] 모든 비디오 처리 루프에 종료 시그널 전송")
+
+def is_shutdown_requested():
+    """서버 종료 요청 확인"""
+    return shutdown_flag
+
+def register_video_session(sid):
+    """비디오 세션 등록"""
+    active_video_sessions[sid] = True
+    print(f"[세션] 비디오 세션 등록: {sid}")
+
+def unregister_video_session(sid):
+    """비디오 세션 해제"""
+    if sid in active_video_sessions:
+        del active_video_sessions[sid]
+        print(f"[세션] 비디오 세션 해제: {sid}")
+
 # --- Confidence 임계값 설정 ---
-PERSON_CONFIDENCE_THRESHOLD = 0.7  # 사람 탐지 임계값: 70% (BBox 표시 기준과 동일)
-ANIMAL_CONFIDENCE_THRESHOLD = 0.7  # 동물 탐지 임계값: 70%
-BBOX_DISPLAY_THRESHOLD = 0.7       # BBox 표시 임계값: 70%
+PERSON_CONFIDENCE_THRESHOLD = 0.5  # 사람 탐지 임계값 (BBox 표시 기준과 동일)
+ANIMAL_CONFIDENCE_THRESHOLD = 0.7  # 동물 탐지 임계값
+BBOX_DISPLAY_THRESHOLD = 0.5       # BBox 표시 임계값
 
 # --- AI 모델 로드 ---
 def load_model(model_name='yolo11n_early_fusion.pt'):
@@ -133,11 +159,78 @@ def transform_rgb_to_tir(frame_rgb):
     # return frame_tir_color, gray
     return gray
 
-def save_video_clip(buffer, file_path, fps):
-    print(f"[녹화 시작] 버퍼 크기: {len(buffer)} 프레임")
+def update_event_file_path(event_id, actual_file_path):
+    """실제 저장된 파일 경로로 데이터베이스 업데이트"""
+    try:
+        from flask import current_app
+        with current_app.app_context():
+            event_file = EventFile.query.filter_by(event_id=event_id, file_type='video_rgb').first()
+            if event_file and actual_file_path:
+                # 파일명만 추출 (디렉토리 경로 제외)
+                actual_filename = os.path.basename(actual_file_path)
+                event_file.file_path = actual_filename
+                db.session.commit()
+                print(f"[DB 업데이트] 이벤트 {event_id} 파일 경로 업데이트: {actual_filename}")
+            else:
+                print(f"[DB 업데이트 실패] 이벤트 {event_id} 파일 정보를 찾을 수 없거나 파일 경로가 None입니다.")
+    except Exception as e:
+        print(f"[DB 업데이트 오류] 이벤트 {event_id} 파일 경로 업데이트 실패: {e}")
+
+def record_event_with_delay(initial_buffer, file_path, fps, cap, tir_cap, additional_seconds, event_id=None):
+    """이벤트 발생 후 추가 프레임을 수집하여 녹화하는 함수"""
+    print(f"[녹화] 이벤트 후 {additional_seconds}초 동안 추가 프레임 수집 시작")
+    
+    additional_frames = []
+    frames_to_collect = int(fps * additional_seconds)
+    frame_interval = 1.0 / fps  # 프레임 간격 계산
+    
+    try:
+        start_time = time.time()
+        for i in range(frames_to_collect):
+            # 비디오 캡처가 여전히 유효한지 확인
+            if not cap or not cap.isOpened():
+                print(f"[녹화] 비디오 캡처가 닫혔습니다. 수집된 프레임: {i}/{frames_to_collect}")
+                break
+                
+            ret, frame = cap.read()
+            if not ret:
+                print(f"[녹화] 추가 프레임 수집 중 실패: {i}/{frames_to_collect}")
+                break
+            
+            additional_frames.append(frame.copy())
+            
+            # 프레임 수집 속도 조절 (실제 비디오 재생 속도와 맞춤)
+            elapsed = time.time() - start_time
+            expected_time = (i + 1) * frame_interval
+            if elapsed < expected_time:
+                time.sleep(expected_time - elapsed)
+        
+        collected_seconds = len(additional_frames) / fps
+        print(f"[녹화] 추가 프레임 수집 완료: {len(additional_frames)}/{frames_to_collect} ({collected_seconds:.1f}초)")
+        actual_file_path = save_video_clip(initial_buffer, file_path, fps, additional_frames)
+        
+        # 데이터베이스 파일 경로 업데이트
+        if event_id and actual_file_path:
+            update_event_file_path(event_id, actual_file_path)
+        
+        return actual_file_path
+        
+    except Exception as e:
+        print(f"[녹화 오류] 추가 프레임 수집 중 오류 발생: {e}")
+        # 오류 발생 시 기본 버퍼만으로 녹화
+        actual_file_path = save_video_clip(initial_buffer, file_path, fps)
+        
+        # 데이터베이스 파일 경로 업데이트
+        if event_id and actual_file_path:
+            update_event_file_path(event_id, actual_file_path)
+        
+        return actual_file_path
+
+def save_video_clip(buffer, file_path, fps, additional_frames=None):
+    print(f"[녹화 시작] 버퍼 크기: {len(buffer)} 프레임, 추가 프레임: {len(additional_frames) if additional_frames else 0} 프레임")
     if not buffer: 
         print("[녹화 실패] 버퍼가 비어있습니다.")
-        return
+        return None
     
     recordings_dir = os.path.dirname(file_path)
     if not os.path.exists(recordings_dir): 
@@ -147,28 +240,84 @@ def save_video_clip(buffer, file_path, fps):
     height, width, _ = buffer[0].shape
     print(f"[녹화] 프레임 크기: {width}x{height}, FPS: {fps}")
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+    # Windows 환경 및 브라우저 호환성을 위한 코덱 선택 (우선순위 순)
+    codecs_to_try = [
+        ('XVID', 'XVID'),             # Windows에서 가장 안정적
+        ('MJPG', 'Motion JPEG'),      # 범용적으로 지원되는 코덱
+        ('mp4v', 'MPEG-4'),           # 기존 사용 코덱
+        ('avc1', 'H.264 (AVC1)'),     # H.264 (라이브러리 있을 때만)
+        ('H264', 'H.264')             # 대체 H.264 표기법
+    ]
     
-    if not writer.isOpened():
-        print(f"[녹화 실패] VideoWriter를 열 수 없습니다: {file_path}")
-        return
+    writer = None
+    used_codec = None
+    
+    for codec_code, codec_name in codecs_to_try:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec_code)
+            writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+            
+            if writer.isOpened():
+                used_codec = codec_name
+                print(f"[녹화] 사용 코덱: {codec_name} ({codec_code})")
+                break
+            else:
+                print(f"[녹화] {codec_name} ({codec_code}) 코덱 실패 - VideoWriter 열기 실패")
+                writer.release()
+        except Exception as e:
+            print(f"[녹화] {codec_name} ({codec_code}) 코덱 실패 - 예외 발생: {e}")
+            if writer:
+                writer.release()
+    
+    if writer is None or not writer.isOpened():
+        print(f"[녹화 실패] 모든 코덱으로 VideoWriter를 열 수 없습니다: {file_path}")
+        
+        # 최후 대안: AVI 파일로 XVID 코덱 재시도
+        if file_path.endswith('.mp4'):
+            avi_path = file_path.replace('.mp4', '.avi')
+            print(f"[녹화] 최후 대안: AVI 형식으로 재시도 - {avi_path}")
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                writer = cv2.VideoWriter(avi_path, fourcc, fps, (width, height))
+                if writer.isOpened():
+                    used_codec = 'XVID (AVI)'
+                    file_path = avi_path  # 파일 경로 업데이트
+                    print(f"[녹화] AVI 형식으로 성공: {used_codec}")
+                else:
+                    print(f"[녹화 실패] AVI 형식도 실패")
+                    return None
+            except Exception as e:
+                print(f"[녹화 실패] AVI 형식 재시도 중 예외: {e}")
+                return None
+        else:
+            return None
     
     frame_count = 0
+    # 버퍼의 프레임들을 먼저 기록 (이벤트 이전)
     for frame in list(buffer): 
         writer.write(frame)
         frame_count += 1
     
+    # 추가 프레임들을 기록 (이벤트 이후)
+    if additional_frames:
+        for frame in additional_frames:
+            writer.write(frame)
+            frame_count += 1
+    
     writer.release()
     
-    # 파일 크기 확인
+    # 파일 크기 확인 및 실제 저장된 파일 경로 반환
     if os.path.exists(file_path):
         file_size = os.path.getsize(file_path)
         print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {file_path}")
+        print(f"[녹화 완료] 사용된 코덱: {used_codec}")
         print(f"[녹화 완료] 파일 크기: {file_size} bytes ({file_size/1024:.2f} KB)")
-        print(f"[녹화 완료] 저장된 프레임 수: {frame_count}")
+        total_seconds = frame_count / fps
+        print(f"[녹화 완료] 저장된 프레임 수: {frame_count}, 전체 시간: {total_seconds:.1f}초")
+        return file_path  # 실제 저장된 파일 경로 반환
     else:
         print(f"[녹화 실패] 파일이 생성되지 않았습니다: {file_path}")
+        return None
 
 def draw_detections_on_frame(frame, results, confidence_threshold=BBOX_DISPLAY_THRESHOLD):
     """confidence 임계값 이상인 탐지 결과만 프레임에 그리기"""
@@ -292,6 +441,11 @@ def start_video_processing(app, sid, stream_config):
     last_event_time = 0
     event_cooldown = 30
     
+    # 버퍼 모니터링을 위한 변수들
+    buffer_start_time = time.time()
+    last_buffer_log_time = 0
+    buffer_log_interval = 1.0  # 1초 간격으로 로깅
+    
     # 시험 영상인 경우 제어 상태 초기화
     if is_test_video:
         test_video_controls[sid] = {
@@ -309,56 +463,89 @@ def start_video_processing(app, sid, stream_config):
     else:
         print(f"[시험 영상] 분석 시작: RGB={os.path.basename(rgb_path)}, TIR={os.path.basename(tir_path)}, 모델={model_name}, 클라이언트: {sid}")
 
-    with app.app_context():
-        while True:
-            # 시험 영상인 경우 제어 상태 확인
-            if is_test_video:
-                control_state = get_test_video_control(sid)
-                
-                # 시간 이동 요청 처리
-                if control_state.get('seek_time') is not None:
-                    seek_time = control_state['seek_time']
-                    video_fps = cap.get(cv2.CAP_PROP_FPS)
-                    if video_fps <= 0:
-                        video_fps = 30  # 기본값 설정
+    # 비디오 세션 등록
+    register_video_session(sid)
+    
+    try:
+        with app.app_context():
+            while True:
+                # 서버 종료 요청 확인
+                if is_shutdown_requested():
+                    print(f"[종료] 서버 종료 요청으로 비디오 처리 루프 종료 (클라이언트: {sid})")
+                    break
                     
-                    seek_frame = int(seek_time * video_fps)
-                    print(f"[비디오 제어] 시간 이동 요청: {seek_time}초 -> {seek_frame}프레임 (FPS: {video_fps})")
+                current_time = time.time()
+                
+                # 1초마다 버퍼 상태 로깅
+                if current_time - last_buffer_log_time >= buffer_log_interval:
+                    buffer_count = len(frame_buffer)
+                    buffer_max = frame_buffer.maxlen
+                    # 실제 경과 시간 기반으로 버퍼 시간 계산
+                    actual_buffer_time = min((current_time - buffer_start_time), RECORD_SECONDS)
+                    buffer_fill_ratio = (buffer_count / buffer_max) * 100 if buffer_max > 0 else 0
                     
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
-                    if tir_cap:
-                        tir_cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+                    print(f"[버퍼 상태] 프레임: {buffer_count}/{buffer_max}, 시간: {actual_buffer_time:.1f}초/{RECORD_SECONDS}초, 충전율: {buffer_fill_ratio:.1f}%")
+                    last_buffer_log_time = current_time
+                # 시험 영상인 경우 제어 상태 확인
+                if is_test_video:
+                    control_state = get_test_video_control(sid)
                     
-                    # 시간 이동 완료 후 seek_time 초기화
-                    test_video_controls[sid]['seek_time'] = None
-                    print(f"[비디오 제어] 시간 이동 실행 완료: {seek_time}초")
-                
-                # 일시정지 상태 확인
-                if control_state.get('is_paused', False):
-                    socketio.sleep(0.1)  # 일시정지 중에는 대기
-                    continue
-                
-                # 재생 속도 적용 (FPS 조정)
-                playback_rate = control_state.get('playback_rate', 1.0)
-                base_fps = max(FPS, 60)  # 기본 FPS
-                adjusted_fps = base_fps * playback_rate
-                
-                # 배속 변경 시 로깅 (1회만)
-                last_logged_rate = control_state.get('_last_logged_rate')
-                if last_logged_rate != playback_rate:
-                    print(f"[비디오 제어] 재생 속도 적용: {playback_rate}x, 기본 FPS: {base_fps}, 조정된 FPS: {adjusted_fps}")
-                    test_video_controls[sid]['_last_logged_rate'] = playback_rate
-            else:
-                adjusted_fps = FPS
+                    # 시간 이동 요청 처리
+                    if control_state.get('seek_time') is not None:
+                        seek_time = control_state['seek_time']
+                        video_fps = cap.get(cv2.CAP_PROP_FPS)
+                        if video_fps <= 0:
+                            video_fps = 30  # 기본값 설정
+                        
+                        seek_frame = int(seek_time * video_fps)
+                        print(f"[비디오 제어] 시간 이동 요청: {seek_time}초 -> {seek_frame}프레임 (FPS: {video_fps})")
+                        
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+                        if tir_cap:
+                            tir_cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+                        
+                        # 시간 이동 완료 후 seek_time 초기화
+                        test_video_controls[sid]['seek_time'] = None
+                        print(f"[비디오 제어] 시간 이동 실행 완료: {seek_time}초")
+                    
+                    # 일시정지 상태 확인
+                    if control_state.get('is_paused', False):
+                        socketio.sleep(0.1)  # 일시정지 중에는 대기
+                        continue
+                    
+                    # 재생 속도 적용 (FPS 조정)
+                    playback_rate = control_state.get('playback_rate', 1.0)
+                    base_fps = max(FPS, 60)  # 기본 FPS
+                    adjusted_fps = base_fps * playback_rate
+                    
+                    # 배속 변경 시 로깅 (1회만)
+                    last_logged_rate = control_state.get('_last_logged_rate')
+                    if last_logged_rate != playback_rate:
+                        print(f"[비디오 제어] 재생 속도 적용: {playback_rate}x, 기본 FPS: {base_fps}, 조정된 FPS: {adjusted_fps}")
+                        test_video_controls[sid]['_last_logged_rate'] = playback_rate
+                else:
+                    adjusted_fps = FPS
+                    
+                ret, frame_rgb = cap.read()
+                if not ret:
+                    if is_test_video: # 시험 영상이면 반복 재생
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        if tir_cap:
+                            tir_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        continue
+                    break # 라이브 스트림이면 종료
             
-            ret, frame_rgb = cap.read()
-            if not ret:
-                if is_test_video: # 시험 영상이면 반복 재생
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    if tir_cap:
-                        tir_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    continue
-                break # 라이브 스트림이면 종료
+            # frame_rgb = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2RGB)
+            # 밑 블럭은 혹시몰라 넣은것것
+            # current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+            # total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            # video_fps = cap.get(cv2.CAP_PROP_FPS)
+            # if video_fps > 0:
+            #     current_time = current_frame / video_fps
+            #     total_duration = total_frames / video_fps
+            # else:
+            #     current_time = 0
+            #     total_duration = 0
 
             frame_buffer.append(frame_rgb.copy())
             
@@ -401,6 +588,15 @@ def start_video_processing(app, sid, stream_config):
 
                             # DB 이벤트 생성 (라이브 모드 & 쿨다운 통과 시)
                             if is_live and (time.time() - last_event_time > event_cooldown):
+                                # 버퍼 검증: 10초 미만일 경우 녹화 건너뛰기
+                                current_time_check = time.time()
+                                actual_buffer_time = min((current_time_check - buffer_start_time), RECORD_SECONDS)
+                                buffer_count = len(frame_buffer)
+                                
+                                if actual_buffer_time < RECORD_SECONDS:
+                                    print(f"[녹화 건너뛰기] 버퍼 시간이 부족합니다: {actual_buffer_time:.1f}초 < {RECORD_SECONDS}초 (프레임: {buffer_count}/{frame_buffer.maxlen})")
+                                    continue
+                                
                                 last_event_time = time.time()
                                 detected_object_type = 'person' if is_person else detected_class_name
                                 
@@ -425,7 +621,11 @@ def start_video_processing(app, sid, stream_config):
                                 db.session.commit()
                                 
                                 socketio.emit('new_event', new_event.to_dict())
-                                threading.Thread(target=save_video_clip, args=(frame_buffer.copy(), file_path, FPS)).start()
+                                
+                                # 이벤트 후 추가 프레임 수집을 위한 데몬 스레드 시작
+                                recording_thread = threading.Thread(target=record_event_with_delay, args=(frame_buffer.copy(), file_path, FPS, cap, tir_cap, RECORD_SECONDS_AFTER, new_event.id))
+                                recording_thread.daemon = True  # 데몬 스레드로 설정하여 메인 프로세스 종료 시 함께 종료
+                                recording_thread.start()
                                 break # 한 이벤트에 대해 한 번만 처리
                     if is_person_detected:
                         break
@@ -463,17 +663,37 @@ def start_video_processing(app, sid, stream_config):
                     'total_frames': total_frames
                 })
             
-            socketio.emit('video_frame', frame_data, room=sid)
-            socketio.sleep(1 / adjusted_fps)
+                socketio.emit('video_frame', frame_data, room=sid)
+                socketio.sleep(1 / adjusted_fps)
+
+    except Exception as e:
+        print(f"[오류] 비디오 처리 중 예외 발생: {e}")
+    finally:
+        # 비디오 세션 해제
+        unregister_video_session(sid)
 
     # 5. 종료 처리 ---
     try:
-        if cap:
-            cap.release()
-            print(f"[정리] 카메라/비디오 캡처 해제 완료")
-        if tir_cap:
-            tir_cap.release()
-            print(f"[정리] TIR 비디오 캡처 해제 완료")
+        # OpenCV 리소스 해제를 별도 스레드에서 실행하여 시간 제한
+        def release_opencv_resources():
+            try:
+                if cap:
+                    cap.release()
+                    print(f"[정리] 카메라/비디오 캡처 해제 완료")
+                if tir_cap:
+                    tir_cap.release()
+                    print(f"[정리] TIR 비디오 캡처 해제 완료")
+            except Exception as e:
+                print(f"[정리] OpenCV 리소스 해제 중 오류: {e}")
+        
+        # 리소스 해제를 별도 스레드에서 실행 (최대 2초 대기)
+        release_thread = threading.Thread(target=release_opencv_resources)
+        release_thread.daemon = True
+        release_thread.start()
+        release_thread.join(timeout=2.0)  # 최대 2초 대기
+        
+        if release_thread.is_alive():
+            print(f"[정리] OpenCV 리소스 해제가 시간 초과되어 강제 종료합니다")
         
         # 시험 영상 제어 상태 정리
         if is_test_video:

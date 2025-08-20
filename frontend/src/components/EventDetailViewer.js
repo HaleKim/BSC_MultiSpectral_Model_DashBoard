@@ -38,16 +38,18 @@ const ConfidenceGauge = ({ value }) => {
 
 
 const EventDetailViewer = ({ event, onClose }) => {
-  // const videoBaseUrl = `${process.env.REACT_APP_API_URL.replace('/api', '')}/event_recordings`;
+  // 현재는 정적 파일 라우트를 사용 (비디오 태그에서 JWT 토큰 처리 어려움)
+  // 향후 보안 강화를 위해 API 엔드포인트 + blob URL 방식으로 개선 가능
+  const videoBaseUrl = `${process.env.REACT_APP_API_URL.replace('/api', '')}/event_recordings`;
   
-  // // 디버그 정보 출력
-  // console.log('=== EventDetailViewer Debug Info ===');
-  // console.log('Event:', event);
-  // console.log('Video path:', event?.video_path_rgb);
-  // console.log('Video base URL:', videoBaseUrl);
-  // console.log('Full video URL:', event?.video_path_rgb ? `${videoBaseUrl}/${event.video_path_rgb}` : 'N/A');
-  // console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-  // console.log('====================================');
+  // 디버그 정보 출력
+  console.log('=== EventDetailViewer Debug Info ===');
+  console.log('Event:', event);
+  console.log('Video path:', event?.video_path_rgb);
+  console.log('Video base URL:', videoBaseUrl);
+  console.log('Full video URL:', event?.video_path_rgb ? `${videoBaseUrl}/${event.video_path_rgb}` : 'N/A');
+  console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+  console.log('====================================');
 
   useEffect(() => {
     const handleEscKey = (e) => {
@@ -92,7 +94,7 @@ const EventDetailViewer = ({ event, onClose }) => {
                 <p><strong>담당 근무자:</strong> {event.user_name || 'N/A'}</p>
             </div>
 
-            {/* {event.video_path_rgb && (
+            {event.video_path_rgb && event.video_path_rgb.trim() !== '' && (
                 <div className="mt-4 flex-grow flex flex-col">
                     <p className="mb-2 flex-shrink-0"><strong>녹화 영상:</strong></p>
                     <div className="flex-grow h-5/6">
@@ -100,12 +102,14 @@ const EventDetailViewer = ({ event, onClose }) => {
                             key={event.video_path_rgb} // 영상 소스가 바뀔 때마다 리렌더링
                             className="w-full h-full rounded-lg bg-black"
                             controls 
-                            autoPlay
                             muted
-                            loop
+                            preload="metadata"
                             onLoadStart={() => {
                                 console.log('Video load started');
                                 console.log('Loading video from:', `${videoBaseUrl}/${event.video_path_rgb}`);
+                            }}
+                            onLoadedData={() => {
+                                console.log('Video loaded successfully');
                             }}
                             onCanPlay={() => {
                                 console.log('Video can play');
@@ -118,6 +122,7 @@ const EventDetailViewer = ({ event, onClose }) => {
                                 console.error('Error target networkState:', e.target.networkState);
                                 console.error('Error target readyState:', e.target.readyState);
                                 console.error('Video source attempted:', `${videoBaseUrl}/${event.video_path_rgb}`);
+                                console.error('Full URL:', `${videoBaseUrl}/${event.video_path_rgb}`);
                                 console.error('==========================');
                             }}
                         >
@@ -126,7 +131,7 @@ const EventDetailViewer = ({ event, onClose }) => {
                         </video>
                     </div>
                 </div>
-            )} */}
+            )}
         </div>
       </div>
     </div>
