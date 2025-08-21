@@ -438,9 +438,22 @@ def start_video_processing(app, sid, stream_config):
             frame_buffer.append((current_time, frame_rgb.copy()))
             
             # 10초보다 오래된 프레임들을 버퍼에서 제거 (시간 기준)
-            buffer_time_limit = current_time - RECORD_SECONDS_BEFORE
+            # 여유를 두어 버퍼가 충분히 성장할 수 있도록 함 (12초 이상 시 제거)
+            buffer_cleanup_threshold = RECORD_SECONDS_BEFORE + 2.0  # 12초
+            buffer_time_limit = current_time - buffer_cleanup_threshold
+            removed_count = 0
             while frame_buffer and frame_buffer[0][0] < buffer_time_limit:
                 frame_buffer.popleft()
+                removed_count += 1
+            
+            # 주기적으로 버퍼 상태 로깅 (5초마다)
+            if len(frame_buffer) > 0 and int(current_time) % 5 == 0:
+                buffer_duration = current_time - frame_buffer[0][0]
+                estimated_fps = len(frame_buffer) / buffer_duration if buffer_duration > 0 else 0
+                cleanup_threshold = buffer_cleanup_threshold
+                ready_for_recording = buffer_duration >= (RECORD_SECONDS_BEFORE - 0.05)
+                print(f"[버퍼 상태] 시간 범위: {buffer_duration:.3f}초, 프레임 수: {len(frame_buffer)}, 실측 FPS: {estimated_fps:.1f}, 제거된 프레임: {removed_count}")
+                print(f"[버퍼 상태] 정리 기준: {cleanup_threshold:.1f}초, 녹화 준비: {'✅' if ready_for_recording else '❌'}")
             
             # 현재 진행 중인 녹화가 있으면 이후 프레임 수집
             if current_recording is not None:
@@ -570,8 +583,13 @@ def start_video_processing(app, sid, stream_config):
                                 oldest_frame_time = frame_buffer[0][0]
                                 buffer_duration = event_timestamp - oldest_frame_time
                                 
-                                if buffer_duration < RECORD_SECONDS_BEFORE:
-                                    print(f"[녹화 무시] 버퍼에 충분한 시간 데이터가 없습니다. 현재: {buffer_duration:.1f}초, 필요: {RECORD_SECONDS_BEFORE}초")
+                                # 부동소수점 정밀도 문제를 고려하여 0.05초 여유를 둠
+                                required_duration = RECORD_SECONDS_BEFORE - 0.05
+                                
+                                print(f"[녹화 검증] 버퍼 시간: {buffer_duration:.3f}초, 필요: {RECORD_SECONDS_BEFORE}초 (최소: {required_duration:.3f}초)")
+                                
+                                if buffer_duration < required_duration:
+                                    print(f"[녹화 무시] 버퍼에 충분한 시간 데이터가 없습니다. 현재: {buffer_duration:.3f}초, 최소 필요: {required_duration:.3f}초")
                                     continue
                                 
                                 print(f"[녹화 시작] 이벤트 발생 시점(timestamp: {event_timestamp:.3f}) 기준 이전 {RECORD_SECONDS_BEFORE}초 + 이후 {RECORD_SECONDS_AFTER}초 녹화를 시작합니다.")
