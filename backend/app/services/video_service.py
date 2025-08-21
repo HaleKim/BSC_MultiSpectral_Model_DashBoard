@@ -10,6 +10,12 @@ import threading
 from collections import deque
 from datetime import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
+
+# OpenH264 DLL 경로 설정 제거 (버전 호환성 문제로 인해)
+# 호환되는 openh264-2.3.1-win64.dll을 python.exe와 동일한 폴더에 배치하면
+# OpenCV가 자동으로 인식하여 H.264 코덱을 사용할 수 있습니다.
+print("INFO: OpenH264 지원 - 호환 DLL이 Python 폴더에 있으면 자동 인식됩니다.")
 
 # Flask 관련 임포트
 from flask import current_app
@@ -136,10 +142,11 @@ def transform_rgb_to_tir(frame_rgb):
     return gray
 
 def save_video_clip(buffer, file_path, fps):
+    """비디오 클립을 저장하고 실제 저장된 파일명을 반환"""
     print(f"[녹화 시작] 버퍼 크기: {len(buffer)} 프레임")
     if not buffer: 
         print("[녹화 실패] 버퍼가 비어있습니다.")
-        return
+        return None
     
     recordings_dir = os.path.dirname(file_path)
     if not os.path.exists(recordings_dir): 
@@ -151,12 +158,50 @@ def save_video_clip(buffer, file_path, fps):
     print(f"[녹화] 프레임 크기: {width}x{height}, FPS: {fps:.2f}")
     print(f"[녹화] 예상 영상 길이: {expected_duration:.1f}초")
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+    # 웹 브라우저 최적화: H.264/MP4 형식을 최우선으로 설정
+    # OpenH264 라이브러리를 통한 H.264 코덱 지원 (웹 표준)
+    codec_combinations = [
+        (cv2.VideoWriter_fourcc(*'H264'), '.mp4', 'H.264 MP4 (OpenH264)'),     # 1순위: H.264 표준
+        (cv2.VideoWriter_fourcc(*'avc1'), '.mp4', 'H.264 AVC1 MP4'),           # 2순위: H.264 대안
+        (cv2.VideoWriter_fourcc(*'mp4v'), '.mp4', 'MPEG-4 MP4'),               # 3순위: MPEG-4 백업
+        # AVI는 웹 브라우저 <video> 태그에서 재생되지 않으므로 최후 백업으로만 유지
+        (cv2.VideoWriter_fourcc(*'MJPG'), '.avi', 'Motion JPEG AVI (백업)'),    # 4순위: 최후 백업
+    ]
     
-    if not writer.isOpened():
-        print(f"[녹화 실패] VideoWriter를 열 수 없습니다: {file_path}")
-        return
+    writer = None
+    used_combination = None
+    final_file_path = file_path
+    
+    # 각 조합을 순서대로 시도
+    for fourcc, ext, description in codec_combinations:
+        # 파일 확장자 변경
+        base_path = os.path.splitext(file_path)[0]
+        test_file_path = base_path + ext
+        
+        print(f"[녹화] {description} 시도 중... (파일: {os.path.basename(test_file_path)})")
+        writer = cv2.VideoWriter(test_file_path, fourcc, fps, (width, height))
+        
+        if writer.isOpened():
+            used_combination = (fourcc, ext, description)
+            final_file_path = test_file_path
+            print(f"[녹화] {description} 성공!")
+            
+            # H.264/MP4 성공 시 특별 로깅
+            if 'H.264' in description and '.mp4' in description:
+                print(f"[녹화] ✅ H.264/MP4 형식으로 저장됨 - 웹 브라우저 완벽 호환!")
+            elif '.avi' in description:
+                print(f"[녹화] ⚠️  AVI 형식으로 저장됨 - 웹 브라우저에서 재생되지 않을 수 있음")
+            
+            break
+        else:
+            print(f"[녹화] {description} 실패")
+        writer.release()
+    
+    if not writer or not writer.isOpened():
+        print(f"[녹화 실패] 모든 코덱 조합으로 VideoWriter를 열 수 없습니다: {file_path}")
+        return None
+    
+    print(f"[녹화] 최종 사용된 형식: {used_combination[2]}")
     
     frame_count = 0
     for frame in list(buffer): 
@@ -166,14 +211,35 @@ def save_video_clip(buffer, file_path, fps):
     writer.release()
     
     # 파일 크기 확인
-    if os.path.exists(file_path):
-        file_size = os.path.getsize(file_path)
+    if os.path.exists(final_file_path):
+        file_size = os.path.getsize(final_file_path)
         actual_duration = frame_count / fps if fps > 0 else 0
-        print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {file_path}")
+        print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {final_file_path}")
         print(f"[녹화 완료] 파일 크기: {file_size} bytes ({file_size/1024:.2f} KB)")
         print(f"[녹화 완료] 저장된 프레임 수: {frame_count}, 실제 영상 길이: {actual_duration:.1f}초")
+        print(f"[녹화 완료] 형식: {used_combination[2]} (웹 브라우저 호환)")
+        
+        return os.path.basename(final_file_path)
     else:
-        print(f"[녹화 실패] 파일이 생성되지 않았습니다: {file_path}")
+        print(f"[녹화 실패] 파일이 생성되지 않았습니다: {final_file_path}")
+        return None
+
+def update_event_file_path(event_file_id, new_filename):
+    """메인 스레드에서 DB 파일 경로를 업데이트"""
+    try:
+        event_file = EventFile.query.get(event_file_id)
+        if event_file:
+            old_filename = event_file.file_path
+            event_file.file_path = new_filename
+            db.session.commit()
+            print(f"[DB 업데이트] 파일명 변경: {old_filename} -> {new_filename}")
+            return True
+        else:
+            print(f"[DB 업데이트] EventFile ID {event_file_id}를 찾을 수 없음")
+            return False
+    except Exception as e:
+        print(f"[DB 업데이트] 실패: {e}")
+        return False
 
 def draw_detections_on_frame(frame, results, confidence_threshold=BBOX_DISPLAY_THRESHOLD):
     """confidence 임계값 이상인 탐지 결과만 프레임에 그리기"""
@@ -411,11 +477,32 @@ def start_video_processing(app, sid, stream_config):
                         print(f"[녹화] 시간 기준 정확한 20초 분량 - 이전: {len(pre_frames)}프레임, 이후: {len(post_frames)}프레임, 총: {len(final_buffer)}프레임")
                         print(f"[녹화] 계산된 FPS: {calculated_fps:.2f} (총 {len(final_buffer)}프레임 ÷ {TOTAL_RECORD_SECONDS}초)")
                         
-                        # 별도 스레드에서 영상 저장
-                        threading.Thread(
-                            target=save_video_clip, 
-                            args=(final_buffer, current_recording['file_path'], calculated_fps)
-                        ).start()
+                        # 별도 스레드에서 영상 저장하고 완료 시 DB 업데이트
+                        # 클로저로 현재 값들을 캡처
+                        original_filename = os.path.basename(current_recording['file_path'])
+                        event_file_id = current_recording['event_file_id']
+                        
+                        def video_save_callback(future):
+                            """영상 저장 완료 시 호출되는 콜백"""
+                            try:
+                                result_filename = future.result()
+                                if result_filename and result_filename != original_filename:
+                                    # 확장자가 변경된 경우에만 DB 업데이트
+                                    print(f"[영상 저장 완료] 파일명 변경 감지: {original_filename} -> {result_filename}")
+                                    socketio.start_background_task(
+                                        update_event_file_path, 
+                                        event_file_id, 
+                                        result_filename
+                                    )
+                                else:
+                                    print(f"[영상 저장 완료] 파일명 변경 없음: {result_filename}")
+                            except Exception as e:
+                                print(f"[영상 저장 콜백] 오류: {e}")
+                        
+                        # ThreadPoolExecutor를 사용해서 결과를 받을 수 있도록 함
+                        executor = ThreadPoolExecutor(max_workers=1)
+                        future = executor.submit(save_video_clip, final_buffer, current_recording['file_path'], calculated_fps)
+                        future.add_done_callback(video_save_callback)
                     else:
                         print(f"[녹화 실패] 수집된 프레임이 없습니다.")
                     
@@ -517,7 +604,8 @@ def start_video_processing(app, sid, stream_config):
                                     'pre_event_frames': list(frame_buffer),  # 이벤트 이전 프레임들 (timestamp, frame) 튜플들
                                     'post_event_frames': [],  # 이벤트 이후 프레임들
                                     'start_time': event_timestamp,
-                                    'last_progress_time': -1  # 진행률 출력 중복 방지용
+                                    'last_progress_time': -1,  # 진행률 출력 중복 방지용
+                                    'event_file_id': new_event_file.id  # DB 업데이트용 ID
                                 }
                                 
                                 # 이전 프레임 통계

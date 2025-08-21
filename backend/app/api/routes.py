@@ -172,7 +172,28 @@ def serve_event_recording(filename):
     """이벤트 녹화 영상 파일을 서빙합니다."""
     try:
         recordings_path = os.path.join(current_app.root_path, '..', 'event_recordings')
-        return send_from_directory(recordings_path, filename)
+        file_path = os.path.join(recordings_path, filename)
+        
+        # 요청된 파일이 존재하는지 확인
+        if os.path.exists(file_path):
+            return send_from_directory(recordings_path, filename)
+        
+        # 파일이 없을 경우 다른 확장자 시도 (MP4 우선, AVI 백업)
+        base_name = os.path.splitext(filename)[0]
+        alternative_extensions = ['.mp4', '.avi']  # MP4 우선 검색
+        
+        for ext in alternative_extensions:
+            alternative_filename = base_name + ext
+            alternative_path = os.path.join(recordings_path, alternative_filename)
+            
+            if os.path.exists(alternative_path):
+                print(f"API: 대체 파일 제공 - {filename} -> {alternative_filename}")
+                return send_from_directory(recordings_path, alternative_filename)
+        
+        # 모든 시도가 실패한 경우
+        print(f"API: 이벤트 녹화 영상을 찾을 수 없음: {filename}")
+        return jsonify({"error": "Video not found"}), 404
+        
     except Exception as e:
         print(f"이벤트 녹화 영상 서빙 중 오류 발생: {e}")
         return jsonify({"error": "Video not found"}), 404

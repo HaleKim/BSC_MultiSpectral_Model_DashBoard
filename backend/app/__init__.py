@@ -53,12 +53,35 @@ def create_app(config_name):
         print(f"Recordings directory: {recordings_dir}")
         print(f"Full file path: {file_path}")
         print(f"File exists: {os.path.exists(file_path)}")
+        
+        # 요청된 파일이 존재하는지 확인
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
             print(f"File size: {file_size} bytes")
             print(f"File size (KB): {file_size / 1024:.2f} KB")
+            print(f"==========================")
+            return send_from_directory(recordings_dir, filename)
+        
+        # 파일이 없을 경우 다른 확장자 시도 (MP4 우선, AVI 백업)
+        base_name = os.path.splitext(filename)[0]
+        alternative_extensions = ['.mp4', '.avi']  # MP4 우선 검색
+        
+        for ext in alternative_extensions:
+            alternative_filename = base_name + ext
+            alternative_path = os.path.join(recordings_dir, alternative_filename)
+            print(f"Trying alternative: {alternative_filename}")
+            
+            if os.path.exists(alternative_path):
+                file_size = os.path.getsize(alternative_path)
+                print(f"Alternative file found: {alternative_filename}")
+                print(f"File size: {file_size} bytes ({file_size / 1024:.2f} KB)")
+                print(f"==========================")
+                return send_from_directory(recordings_dir, alternative_filename)
+        
+        print(f"No file found with any supported extension")
         print(f"==========================")
-        return send_from_directory(recordings_dir, filename)
+        from flask import abort
+        abort(404)
 
     # 데이터베이스 테이블 생성
     # with app.app_context():

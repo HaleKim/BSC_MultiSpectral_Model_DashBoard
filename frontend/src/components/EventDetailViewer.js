@@ -38,16 +38,16 @@ const ConfidenceGauge = ({ value }) => {
 
 
 const EventDetailViewer = ({ event, onClose }) => {
-  // const videoBaseUrl = `${process.env.REACT_APP_API_URL.replace('/api', '')}/event_recordings`;
+  const videoBaseUrl = `${process.env.REACT_APP_API_URL.replace('/api', '')}/event_recordings`;
   
-  // // 디버그 정보 출력
-  // console.log('=== EventDetailViewer Debug Info ===');
-  // console.log('Event:', event);
-  // console.log('Video path:', event?.video_path_rgb);
-  // console.log('Video base URL:', videoBaseUrl);
-  // console.log('Full video URL:', event?.video_path_rgb ? `${videoBaseUrl}/${event.video_path_rgb}` : 'N/A');
-  // console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-  // console.log('====================================');
+  // 디버그 정보 출력
+  console.log('=== EventDetailViewer Debug Info ===');
+  console.log('Event:', event);
+  console.log('Video path:', event?.video_path_rgb);
+  console.log('Video base URL:', videoBaseUrl);
+  console.log('Full video URL:', event?.video_path_rgb ? `${videoBaseUrl}/${event.video_path_rgb}` : 'N/A');
+  console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+  console.log('====================================');
 
   useEffect(() => {
     const handleEscKey = (e) => {
@@ -67,13 +67,14 @@ const EventDetailViewer = ({ event, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="relative w-full max-w-lg h-[40vh] flex flex-col bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl h-[60vh] flex flex-col bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
         <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-700">
             <h2 className="text-xl font-semibold text-cyan-400 capitalize">{event.detected_object} 탐지 상세 정보</h2>
             <button onClick={onClose} className="text-gray-400 text-3xl font-bold hover:text-white">&times;</button>
         </div>
         
-        <div className="flex-grow p-6 space-y-4 overflow-y-auto flex flex-col justify-center">
+        {/* 상단 1/3: 이벤트 정보 */}
+        <div className="flex-shrink-0 h-1/3 p-6 space-y-4 overflow-y-auto">
             <div className="flex items-center justify-center space-x-4">
                 <EventIcon type={event.detected_object} />
                 <div className="text-center">
@@ -91,14 +92,17 @@ const EventDetailViewer = ({ event, onClose }) => {
                 <p><strong>카메라 정보:</strong> {event.camera_name} ({event.location})</p>
                 <p><strong>담당 근무자:</strong> {event.user_name || 'N/A'}</p>
             </div>
+        </div>
 
-            {/* {event.video_path_rgb && (
-                <div className="mt-4 flex-grow flex flex-col">
-                    <p className="mb-2 flex-shrink-0"><strong>녹화 영상:</strong></p>
-                    <div className="flex-grow h-5/6">
+        {/* 하단 2/3: 비디오 플레이어 */}
+        <div className="flex-grow h-2/3 p-6 flex flex-col">
+            {event.video_path_rgb ? (
+                <div className="h-full flex flex-col">
+                    <p className="mb-4 text-lg font-semibold text-cyan-400"><strong>녹화 영상:</strong></p>
+                    <div className="flex-grow bg-black rounded-lg overflow-hidden shadow-lg">
                         <video 
                             key={event.video_path_rgb} // 영상 소스가 바뀔 때마다 리렌더링
-                            className="w-full h-full rounded-lg bg-black"
+                            className="w-full h-full object-contain"
                             controls 
                             autoPlay
                             muted
@@ -126,7 +130,11 @@ const EventDetailViewer = ({ event, onClose }) => {
                         </video>
                     </div>
                 </div>
-            )} */}
+            ) : (
+                <div className="h-full flex items-center justify-center bg-gray-700 rounded-lg">
+                    <p className="text-gray-400 text-lg">녹화된 영상이 없습니다.</p>
+                </div>
+            )}
         </div>
       </div>
     </div>
