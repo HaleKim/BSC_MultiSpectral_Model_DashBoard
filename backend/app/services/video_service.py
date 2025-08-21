@@ -47,7 +47,9 @@ def get_default_model_from_settings():
 DEFAULT_MODEL_NAME = get_default_model_from_settings()
 MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'models_ai', DEFAULT_MODEL_NAME)
 MODEL_TYPE = 'early_fusion'
-RECORD_SECONDS = 10
+RECORD_SECONDS_BEFORE = 10  # 이벤트 발생 이전 녹화 시간
+RECORD_SECONDS_AFTER = 10   # 이벤트 발생 이후 녹화 시간
+TOTAL_RECORD_SECONDS = RECORD_SECONDS_BEFORE + RECORD_SECONDS_AFTER  # 총 녹화 시간
 FPS = 40
 RECORDINGS_FOLDER = "event_recordings"
 
@@ -145,7 +147,9 @@ def save_video_clip(buffer, file_path, fps):
         print(f"[녹화] 디렉토리 생성: {recordings_dir}")
     
     height, width, _ = buffer[0].shape
-    print(f"[녹화] 프레임 크기: {width}x{height}, FPS: {fps}")
+    expected_duration = len(buffer) / fps if fps > 0 else 0
+    print(f"[녹화] 프레임 크기: {width}x{height}, FPS: {fps:.2f}")
+    print(f"[녹화] 예상 영상 길이: {expected_duration:.1f}초")
     
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
@@ -164,9 +168,10 @@ def save_video_clip(buffer, file_path, fps):
     # 파일 크기 확인
     if os.path.exists(file_path):
         file_size = os.path.getsize(file_path)
+        actual_duration = frame_count / fps if fps > 0 else 0
         print(f"[녹화 완료] 영상이 다음 경로에 저장되었습니다: {file_path}")
         print(f"[녹화 완료] 파일 크기: {file_size} bytes ({file_size/1024:.2f} KB)")
-        print(f"[녹화 완료] 저장된 프레임 수: {frame_count}")
+        print(f"[녹화 완료] 저장된 프레임 수: {frame_count}, 실제 영상 길이: {actual_duration:.1f}초")
     else:
         print(f"[녹화 실패] 파일이 생성되지 않았습니다: {file_path}")
 
@@ -288,9 +293,11 @@ def start_video_processing(app, sid, stream_config):
             return
 
     # 4. 처리 루프 설정 ---
-    frame_buffer = deque(maxlen=FPS * RECORD_SECONDS)
+    # 시간 기반 버퍼: (timestamp, frame) 튜플로 저장
+    frame_buffer = deque()  # maxlen 제거하여 시간 기준으로 직접 관리
     last_event_time = 0
     event_cooldown = 30
+    current_recording = None  # 현재 진행 중인 녹화 정보
     
     # 시험 영상인 경우 제어 상태 초기화
     if is_test_video:
@@ -360,7 +367,67 @@ def start_video_processing(app, sid, stream_config):
                     continue
                 break # 라이브 스트림이면 종료
 
-            frame_buffer.append(frame_rgb.copy())
+            # 현재 시간과 함께 프레임 저장
+            current_time = time.time()
+            frame_buffer.append((current_time, frame_rgb.copy()))
+            
+            # 10초보다 오래된 프레임들을 버퍼에서 제거 (시간 기준)
+            buffer_time_limit = current_time - RECORD_SECONDS_BEFORE
+            while frame_buffer and frame_buffer[0][0] < buffer_time_limit:
+                frame_buffer.popleft()
+            
+            # 현재 진행 중인 녹화가 있으면 이후 프레임 수집
+            if current_recording is not None:
+                current_recording['post_event_frames'].append((current_time, frame_rgb.copy()))
+                
+                # 시간 기준으로 이후 10초 수집 완료 확인
+                time_elapsed = current_time - current_recording['event_timestamp']
+                if time_elapsed >= RECORD_SECONDS_AFTER:
+                    # 이후 프레임 수집 완료, 녹화 시작
+                    print(f"[녹화] 이후 {time_elapsed:.1f}초 프레임 수집 완료, 영상 생성 시작")
+                    
+                    # 시간 기준으로 정확한 20초 분량 추출
+                    start_time = current_recording['event_timestamp'] - RECORD_SECONDS_BEFORE
+                    end_time = current_recording['event_timestamp'] + RECORD_SECONDS_AFTER
+                    
+                    # 이전 프레임에서 시간 범위에 맞는 것들만 추출
+                    pre_frames = []
+                    for timestamp, frame in current_recording['pre_event_frames']:
+                        if start_time <= timestamp <= current_recording['event_timestamp']:
+                            pre_frames.append(frame)
+                    
+                    # 이후 프레임에서 시간 범위에 맞는 것들만 추출
+                    post_frames = []
+                    for timestamp, frame in current_recording['post_event_frames']:
+                        if current_recording['event_timestamp'] < timestamp <= end_time:
+                            post_frames.append(frame)
+                    
+                    # 최종 버퍼 생성
+                    final_buffer = pre_frames + post_frames
+                    
+                    # 실제 20초 분량이 되도록 정확한 FPS 계산
+                    if len(final_buffer) > 0:
+                        calculated_fps = len(final_buffer) / TOTAL_RECORD_SECONDS
+                        print(f"[녹화] 시간 기준 정확한 20초 분량 - 이전: {len(pre_frames)}프레임, 이후: {len(post_frames)}프레임, 총: {len(final_buffer)}프레임")
+                        print(f"[녹화] 계산된 FPS: {calculated_fps:.2f} (총 {len(final_buffer)}프레임 ÷ {TOTAL_RECORD_SECONDS}초)")
+                        
+                        # 별도 스레드에서 영상 저장
+                        threading.Thread(
+                            target=save_video_clip, 
+                            args=(final_buffer, current_recording['file_path'], calculated_fps)
+                        ).start()
+                    else:
+                        print(f"[녹화 실패] 수집된 프레임이 없습니다.")
+                    
+                    # 녹화 완료 처리
+                    current_recording = None
+                    print(f"[녹화] 20초 분량 영상 저장 스레드 시작됨")
+                else:
+                    # 진행률 출력 (2초마다)
+                    if int(time_elapsed) % 2 == 0 and time_elapsed != current_recording.get('last_progress_time', -1):
+                        current_recording['last_progress_time'] = time_elapsed
+                        progress = min(time_elapsed / RECORD_SECONDS_AFTER * 100, 100)
+                        print(f"[녹화 진행] 이후 프레임 수집 중: {time_elapsed:.1f}/{RECORD_SECONDS_AFTER}초 ({progress:.1f}%)")
             
             # TIR 프레임 처리
             if tir_cap:
@@ -404,7 +471,24 @@ def start_video_processing(app, sid, stream_config):
                                 last_event_time = time.time()
                                 detected_object_type = 'person' if is_person else detected_class_name
                                 
-                                print(f"[{detected_object_type} 탐지] 카메라 {camera_id_for_db}에서 이벤트 발생. confidence: {confidence:.2f}, 녹화를 시작합니다.")
+                                event_timestamp = time.time()  # 이벤트 발생 정확한 시간
+                                print(f"[{detected_object_type} 탐지] 카메라 {camera_id_for_db}에서 이벤트 발생. confidence: {confidence:.2f}")
+                                
+                                # 시간 기반 버퍼 검증: 10초 미만의 데이터가 있으면 녹화를 무시
+                                if not frame_buffer:
+                                    print(f"[녹화 무시] 버퍼가 비어있습니다.")
+                                    continue
+                                
+                                # 가장 오래된 프레임과 이벤트 시간의 차이 확인
+                                oldest_frame_time = frame_buffer[0][0]
+                                buffer_duration = event_timestamp - oldest_frame_time
+                                
+                                if buffer_duration < RECORD_SECONDS_BEFORE:
+                                    print(f"[녹화 무시] 버퍼에 충분한 시간 데이터가 없습니다. 현재: {buffer_duration:.1f}초, 필요: {RECORD_SECONDS_BEFORE}초")
+                                    continue
+                                
+                                print(f"[녹화 시작] 이벤트 발생 시점(timestamp: {event_timestamp:.3f}) 기준 이전 {RECORD_SECONDS_BEFORE}초 + 이후 {RECORD_SECONDS_AFTER}초 녹화를 시작합니다.")
+                                print(f"[녹화] 버퍼 시간 범위: {buffer_duration:.1f}초, 프레임 수: {len(frame_buffer)}개")
                                 
                                 camera = Camera.query.get(int(camera_id_for_db))
                                 if not camera: # 예외 처리: 카메라가 DB에 없는 경우
@@ -415,7 +499,7 @@ def start_video_processing(app, sid, stream_config):
                                 db.session.add(new_event)
                                 db.session.commit()
                                 
-                                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                timestamp_str = datetime.fromtimestamp(event_timestamp).strftime("%Y%m%d_%H%M%S")
                                 filename = f"event_{timestamp_str}_cam{camera_id_for_db}.mp4"
                                 recordings_base_path = os.path.join(app.root_path, '..', RECORDINGS_FOLDER)
                                 file_path = os.path.join(recordings_base_path, filename)
@@ -425,7 +509,24 @@ def start_video_processing(app, sid, stream_config):
                                 db.session.commit()
                                 
                                 socketio.emit('new_event', new_event.to_dict())
-                                threading.Thread(target=save_video_clip, args=(frame_buffer.copy(), file_path, FPS)).start()
+                                
+                                # 시간 기반 녹화 로직: 이전 10초 + 이후 10초
+                                current_recording = {
+                                    'file_path': file_path,
+                                    'event_timestamp': event_timestamp,  # 이벤트 발생 정확한 시간
+                                    'pre_event_frames': list(frame_buffer),  # 이벤트 이전 프레임들 (timestamp, frame) 튜플들
+                                    'post_event_frames': [],  # 이벤트 이후 프레임들
+                                    'start_time': event_timestamp,
+                                    'last_progress_time': -1  # 진행률 출력 중복 방지용
+                                }
+                                
+                                # 이전 프레임 통계
+                                pre_frame_count = len(current_recording['pre_event_frames'])
+                                if pre_frame_count > 0:
+                                    pre_duration = event_timestamp - current_recording['pre_event_frames'][0][0]
+                                    print(f"[녹화] 이전 프레임 {pre_frame_count}개 수집 완료 (시간 범위: {pre_duration:.1f}초), 이후 {RECORD_SECONDS_AFTER}초 프레임 수집 시작")
+                                else:
+                                    print(f"[녹화] 이전 프레임 없음, 이후 {RECORD_SECONDS_AFTER}초 프레임 수집 시작")
                                 break # 한 이벤트에 대해 한 번만 처리
                     if is_person_detected:
                         break
