@@ -210,7 +210,7 @@ const Dashboard = () => {
         <button
           onClick={() => handleModeChange('live')}
           className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
-            mode === 'live' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
+            mode === 'live' ? 'bg-teal-600' : 'bg-gray-600 hover:bg-gray-700'
           }`}
         >
           실시간 다중 감시
@@ -219,7 +219,7 @@ const Dashboard = () => {
           <button
             onClick={() => handleModeChange('test')}
             className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${
-              mode === 'test' ? 'bg-cyan-600' : 'bg-gray-600 hover:bg-gray-700'
+              mode === 'test' ? 'bg-teal-600' : 'bg-gray-600 hover:bg-gray-700'
             }`}
           >
             시험 영상 분석 (관리자)
@@ -227,13 +227,17 @@ const Dashboard = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-start">
-        <div className="lg:col-span-2 space-y-6">
+      <div
+        className={`grid gap-6 lg:items-start ${
+          mode === 'live' ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'
+        }`}
+      >
+        <div className={`${mode === 'live' ? 'lg:col-span-2' : ''} space-y-6`}>
           {mode === 'live' ? (
             <>
               <div className="p-3 bg-gray-800 rounded-lg text-center">
                 <span className="text-gray-400 text-sm">현재 적용된 기본 모델: </span>
-                <span className="font-mono text-cyan-400">
+                <span className="font-mono text-teal-400">
                   {isModelReloading ? "모델 재로드 중..." : (selectedLiveModel || "로딩 중...")}
                 </span>
               </div>
@@ -259,18 +263,21 @@ const Dashboard = () => {
               </div>
             </>
           ) : (
-            <TestModePanel />
+            <div className="mx-auto max-w-screen-xl px-4">
+              <TestModePanel />
+            </div>
           )}
         </div>
 
-        <div className="space-y-6 h-full">
-          {serverMessage && (
-            <div className="p-4 bg-blue-900 rounded-lg text-center mb-4">{serverMessage}</div>
-          )}
-          {mode === 'live' && (
+        {mode === 'live' && (
+          <div className="space-y-6 h-full">
+            {serverMessage && (
+              <div className="p-4 bg-blue-900 rounded-lg text-center mb-4">{serverMessage}</div>
+            )}
             <EventLog onOpenFull={handleOpenFullEvent} />
-          )}
-        </div>
+          </div>
+        )}
+
       </div>
 
       {viewer && (

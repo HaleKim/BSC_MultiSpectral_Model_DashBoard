@@ -54,7 +54,7 @@ const MainPage = () => {
             alt="Logo"
             className="h-14 w-14 object-contain" // 로고 크기 (40px)
           />
-          <h1 className="text-2xl font-bold text-cyan-400">
+          <h1 className="text-2xl font-bold text-teal-600">
             BSC-MODS Dashboard
           </h1>
         </div>
@@ -71,7 +71,7 @@ const MainPage = () => {
           )}
           <span className="text-gray-300 mr-4">
             환영합니다,{' '}
-            <span className="font-semibold text-cyan-400">{user?.username}</span>님 ({user?.role})
+            <span className="font-semibold text-teal-600">{user?.username}</span>님 ({user?.role})
           </span>
           <button
             onClick={logout}

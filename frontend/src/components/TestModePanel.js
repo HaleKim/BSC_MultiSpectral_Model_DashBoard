@@ -395,93 +395,108 @@ const TestModePanel = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-2">
             <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
-                <h3 className="text-lg font-semibold mb-3 text-white">분석 모델 선택</h3>
-                <select 
-                    value={selectedModel} 
+                <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+                <h3 className="text-lg font-semibold text-white mb-2 md:mb-0 md:w-44">
+                    분석 모델 선택
+                </h3>
+                <select
+                    value={selectedModel}
                     onChange={(e) => {
-                        const newModel = e.target.value;
-                        setSelectedModel(newModel);
-                        localStorage.setItem('selectedTestModel', newModel);
+                    const newModel = e.target.value;
+                    setSelectedModel(newModel);
+                    localStorage.setItem('selectedTestModel', newModel);
                     }}
-                    className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="flex-1 px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600"
                     disabled={isAnalyzing || isModelsLoading}
                 >
                     {isModelsLoading ? (
-                        <option>모델 목록을 불러오는 중...</option>
+                    <option>모델 목록을 불러오는 중...</option>
                     ) : availableModels.length > 0 ? (
-                        availableModels.map((model) => (
-                            <option key={model} value={model}>{model}</option>
-                        ))
+                    availableModels.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                    ))
                     ) : (
-                        <option>사용 가능한 모델이 없습니다.</option>
+                    <option>사용 가능한 모델이 없습니다.</option>
                     )}
                 </select>
-                <div className="mt-2 text-xs text-gray-400">
+                </div>
+
+                {/* <div className="mt-2 text-xs text-gray-400">
                     <p>models_ai 폴더에서 {availableModels.length}개 모델 발견</p>
                     {selectedModel && (
-                        <p>선택된 모델: <span className="text-cyan-400 font-mono">{selectedModel}</span></p>
+                        <p>선택된 모델: <span className="text-teal-500 font-mono">{selectedModel}</span></p>
                     )}
-                </div>
+                </div> */}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-white">RGB 영상 선택</h3>
-                    <select 
-                        value={selectedRgbVideo} 
+                    <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+                    <h3 className="text-lg font-semibold text-white mb-2 md:mb-0 md:w-44">
+                        RGB 영상 선택
+                    </h3>
+                    <select
+                        value={selectedRgbVideo}
                         onChange={(e) => {
-                            setSelectedRgbVideo(e.target.value);
-                            setIsPlaying(false);
-                            setCurrentTime(0);
-                            setDuration(0);
+                        setSelectedRgbVideo(e.target.value);
+                        setIsPlaying(false);
+                        setCurrentTime(0);
+                        setDuration(0);
                         }}
-                        className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-3"
+                        className="flex-1 px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600"
                         disabled={isLoading || isAnalyzing}
                     >
                         {isLoading ? (
-                            <option>목록을 불러오는 중...</option>
+                        <option>목록을 불러오는 중...</option>
                         ) : testVideos.length > 0 ? (
-                            testVideos.map((video) => (
-                                <option key={`rgb-${video}`} value={video}>{video}</option>
-                            ))
+                        testVideos.map((video) => (
+                            <option key={`rgb-${video}`} value={video}>{video}</option>
+                        ))
                         ) : (
-                            <option>사용 가능한 영상이 없습니다.</option>
+                        <option>사용 가능한 영상이 없습니다.</option>
                         )}
                     </select>
+                    </div>
+
                 </div>
 
                 <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-white">TIR 영상 선택</h3>
-                    <select 
-                        value={selectedTirVideo} 
+                    <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+                    <h3 className="text-lg font-semibold text-white mb-2 md:mb-0 md:w-44">
+                        TIR 영상 선택
+                    </h3>
+                    <select
+                        value={selectedTirVideo}
                         onChange={(e) => {
-                            setSelectedTirVideo(e.target.value);
-                            setIsPlaying(false);
-                            setCurrentTime(0);
-                            setDuration(0);
+                        setSelectedTirVideo(e.target.value);
+                        setIsPlaying(false);
+                        setCurrentTime(0);
+                        setDuration(0);
                         }}
-                        className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-3"
+                        className="flex-1 px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600"
                         disabled={isLoading || isAnalyzing}
                     >
                         {isLoading ? (
-                            <option>목록을 불러오는 중...</option>
+                        <option>목록을 불러오는 중...</option>
                         ) : testVideos.length > 0 ? (
-                            testVideos.map((video) => (
-                                <option key={`tir-${video}`} value={video}>{video}</option>
-                            ))
+                        testVideos.map((video) => (
+                            <option key={`tir-${video}`} value={video}>{video}</option>
+                        ))
                         ) : (
-                            <option>사용 가능한 영상이 없습니다.</option>
+                        <option>사용 가능한 영상이 없습니다.</option>
                         )}
                     </select>
+                    </div>
+
                 </div>
             </div>
 
             <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
                 <h3 className="text-lg font-semibold mb-3 text-white">동기화된 비디오 플레이어</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div className="bg-black rounded-md aspect-video relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                    <div className="bg-black rounded-md relative h-[34vh] md:h-[36vh]">
                         {selectedRgbVideo ? (
                             <>
                                 <video
@@ -515,7 +530,7 @@ const TestModePanel = () => {
                         </div>
                     </div>
 
-                    <div className="bg-black rounded-md aspect-video relative">
+                    <div className="bg-black rounded-md relative h-[34vh] md:h-[36vh]">
                         {selectedTirVideo ? (
                             <>
                                 <video
@@ -552,8 +567,8 @@ const TestModePanel = () => {
 
                 {/* 분석 중일 때만 비디오 컨트롤러 표시 */}
                 {isAnalyzing && (
-                    <div className="mt-4 p-4 bg-gray-700 rounded-lg space-y-3">
-                        <h4 className="text-md font-semibold text-white mb-2">비디오 컨트롤러</h4>
+                    <div className="mt-2 p-3 bg-gray-700 rounded-lg space-y-2">
+                        <h4 className="text-sm font-semibold text-white mb-1">비디오 컨트롤러</h4>
                         <div className="flex items-center space-x-2">
                             <span className="text-white text-sm font-mono">{formatTime(currentTime)}</span>
                             <input
@@ -572,7 +587,7 @@ const TestModePanel = () => {
                         <div className="flex items-center justify-center space-x-4">
                             <button 
                                 onClick={handlePlayPause} 
-                                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
+                                className="px-4 py-2 bg-teal-700 hover:bg-teal-700 text-white rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
                             >
                                 <span>{isPlaying ? '⏸️' : '▶️'}</span>
                                 <span>{isPlaying ? '일시정지' : '재생'}</span>
@@ -582,7 +597,7 @@ const TestModePanel = () => {
                                 <select
                                     value={playbackRate}
                                     onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
-                                    className="px-2 py-1 bg-gray-600 text-white rounded border border-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                    className="px-2 py-1 bg-gray-600 text-white rounded border border-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-600"
                                 >
                                     <option value={0.25}>0.25x</option>
                                     <option value={0.5}>0.5x</option>
@@ -604,7 +619,7 @@ const TestModePanel = () => {
                 )}
             </div>
 
-            <div className="flex justify-center space-x-4">
+            <div className="flex justify-center space-x-2">
                 {!isAnalyzing ? (
                     <button 
                         onClick={handleStartAnalysis} 
@@ -629,8 +644,8 @@ const TestModePanel = () => {
                 </div>
             )}
 
-            <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
-                <h3 className="text-lg font-semibold mb-3 text-white">분석 상태</h3>
+            <div className="p-3 bg-gray-800 rounded-lg shadow-lg">
+                <h3 className="text-lg font-semibold mb-2 text-white">분석 상태</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
                         <span className="text-gray-400">선택된 모델:</span>
