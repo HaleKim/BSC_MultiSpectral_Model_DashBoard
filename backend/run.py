@@ -27,13 +27,6 @@ import sys
 def signal_handler(sig, frame):
     print('\nCtrl+C가 감지되었습니다. 서버를 종료합니다...')
     
-    # 비디오 처리 루프에 종료 신호 전송
-    try:
-        from app.services.video_service import set_shutdown_flag
-        set_shutdown_flag()
-    except Exception as e:
-        print(f"종료 플래그 설정 중 오류: {e}")
-    
     # 모든 활성 비디오 처리 스레드 종료
     tasks_to_kill = []
     for sid in list(video_tasks.keys()):
@@ -53,22 +46,14 @@ def signal_handler(sig, frame):
                 task.kill()
             except Exception as e:
                 print(f"    - 작업 종료 중 오류 발생: {e}")
-        
-        # 작업 정리를 위한 대기 시간 증가 (비디오 루프가 종료 플래그를 확인할 시간 제공)
-        import time
-        time.sleep(1.0)
 
     print("모든 백그라운드 작업이 정리되었습니다.")
     
     # 소켓 서버 정상 종료 (eventlet/gevent 사용 시 필요)
-    print("Socket.IO 서버를 중지합니다...")
-    try:
-        socketio.stop() 
-        print("Socket.IO 서버가 중지되었습니다.")
-    except Exception as e:
-        print(f"Socket.IO 서버 중지 중 오류: {e}")
+    # 이 함수는 socketio.run() 루프를 중단시킵니다.
+    socketio.stop() 
     
-    print("프로세스를 종료합니다.")
+    print("Socket.IO 서버가 중지되었습니다. 프로세스를 종료합니다.")
     
     # eventlet 이벤트 루프 강제 종료
     try:
@@ -77,9 +62,7 @@ def signal_handler(sig, frame):
     except:
         pass
     
-    # 더 빠른 종료를 위해 os._exit() 사용
-    import os
-    os._exit(0)
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 

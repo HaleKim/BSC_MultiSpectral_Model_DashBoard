@@ -1,0 +1,20 @@
+# /backend/models.yaml
+# 이 파일은 시스템에서 사용할 AI 모델의 정보를 관리합니다.
+# model_manager.py가 이 파일을 읽어 모델을 로드하고 관리합니다.
+
+models:
+  - name: "RGB-Only (YOLO11n)" # 모델의 이름 (UI에 표시됨)
+    # /backend/models_ai/ 폴더 안에 있는 실제 모델 파일의 이름
+    file_path: "yolo11n.pt" 
+    type: "rgb_only" # 모델의 입력 타입 (video_service.py에서 분기 처리 시 사용)
+    description: "RGB 3채널 영상만으로 객체를 탐지하는 기본 모델"
+
+  - name: "Early Fusion v1.0 (Simulated)"
+    file_path: "yolo11n_early_fusion.pt" # 실제 파일 경로로 수정해야 함
+    type: "early_fusion"
+    description: "RGB(3)와 TIR(1)을 입력단에서 4채널로 결합하여 처리하는 모델"
+
+  - name: "Mid Fusion v1.0 (Custom)"
+    file_path: "yolo11n_mid_fusion.pt" # 실제 파일 경로로 수정해야 함
+    type: "custom_mid_fusion"
+    description: "RGB와 TIR을 별도 브랜치로 입력받아 모델 내부 중간에서 결합하는 모델"

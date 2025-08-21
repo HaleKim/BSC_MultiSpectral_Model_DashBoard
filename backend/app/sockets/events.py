@@ -32,14 +32,12 @@ def handle_disconnect():
         for camera_id, task in tasks_to_kill:
             try:
                 task.kill()
+                # 작업이 완전히 종료될 때까지 짧게 대기
+                import time
+                time.sleep(0.1)
                 logger.info(f"카메라 {camera_id} 스트리밍 작업 종료: {client_sid}")
             except Exception as e:
                 logger.error(f"작업 종료 오류 (카메라 {camera_id}): {e}")
-        
-        # 모든 작업 종료 후 한 번만 대기 (시간 단축)
-        if tasks_to_kill:
-            import time
-            time.sleep(0.05)  # 50ms로 단축
         
         # 클라이언트 작업 딕셔너리 정리
         try:
@@ -113,6 +111,9 @@ def handle_stop_stream(data):
     if client_sid in video_tasks and camera_id in video_tasks[client_sid]:
         task = video_tasks[client_sid].pop(camera_id)
         task.kill()
+        # 작업이 완전히 종료될 때까지 짧게 대기
+        import time
+        time.sleep(0.1)
         logger.info(f"[실시간 스트림 중지] 사용자 요청으로 카메라 {camera_id} 스트리밍 중지: {client_sid}")
         emit('response', {'message': f'카메라 {camera_id} 스트리밍을 중지합니다.'})
     else:
@@ -185,6 +186,9 @@ def handle_stop_test_stream(data):
     if client_sid in video_tasks and 'test_video' in video_tasks[client_sid]:
         task = video_tasks[client_sid].pop('test_video')
         task.kill()
+        # 완전한 정리를 위한 대기
+        import time
+        time.sleep(0.3)
         logger.info(f"사용자 요청으로 시험 영상 분석 중지 및 정리 완료: {client_sid}")
         emit('response', {'message': '시험 영상 분석을 중지했습니다.'})
     else:
