@@ -67,7 +67,7 @@ const EventDetailViewer = ({ event, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="relative w-full max-w-2xl h-[60vh] flex flex-col bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl h-[90vh] flex flex-col bg-gray-800 rounded-2xl shadow-xl text-white" onClick={e => e.stopPropagation()}>
         <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-700">
             <h2 className="text-xl font-semibold text-cyan-400 capitalize">{event.detected_object} 탐지 상세 정보</h2>
             <button onClick={onClose} className="text-gray-400 text-3xl font-bold hover:text-white">&times;</button>
@@ -94,12 +94,12 @@ const EventDetailViewer = ({ event, onClose }) => {
             </div>
         </div>
 
-        {/* 하단 2/3: 비디오 플레이어 */}
-        <div className="flex-grow h-2/3 p-6 flex flex-col">
+        {/* 하단: 비디오 플레이어 (남는 공간 모두 사용) */}
+        <div className="flex-grow p-6 flex flex-col min-h-0">
             {event.video_path_rgb ? (
                 <div className="h-full flex flex-col">
                     <p className="mb-4 text-lg font-semibold text-cyan-400"><strong>녹화 영상:</strong></p>
-                    <div className="flex-grow bg-black rounded-lg overflow-hidden shadow-lg">
+                    <div className="flex-grow bg-black rounded-lg overflow-hidden shadow-lg min-h-0">
                         <video 
                             key={event.video_path_rgb} // 영상 소스가 바뀔 때마다 리렌더링
                             className="w-full h-full object-contain"
