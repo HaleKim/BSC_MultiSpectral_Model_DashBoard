@@ -13,6 +13,7 @@ mysql-connector-python==8.0.30
 
 # 인증 (JSON Web Token)
 Flask-JWT-Extended==4.4.4
+Flask-Login==0.6.2
 
 # AI 및 이미지 처리
 # PyTorch는 CUDA 버전에 따라 설치 방법이 다르므로, 공식 홈페이지를 참고하는 것이 가장 좋습니다.
